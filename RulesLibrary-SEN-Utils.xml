@@ -1,0 +1,1522 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE sailpoint PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<sailpoint>
+<Rule language="beanshell" name="RulesLibrary-SEN-Utils">
+  <ReferencedRules>
+    <Reference class="sailpoint.object.Rule"  name="RulesLibrary-SEN-Departments"/>
+    <Reference class="sailpoint.object.Rule"  name="RulesLibrary-SEN-Workgroups"/>
+  </ReferencedRules>
+  <Source>
+<![CDATA[
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import openconnector.ConnectorException;
+import java.util.Map;
+import java.util.Map.Entry;
+import sailpoint.tools.Util;
+
+import sailpoint.api.IdentityService;
+import sailpoint.api.SailPointContext;
+import sailpoint.api.SailPointFactory;
+import sailpoint.object.Workflow;		
+import sailpoint.object.Application;
+import sailpoint.object.Filter;
+import sailpoint.object.Identity;
+import sailpoint.object.Bundle;
+import sailpoint.object.Link;
+import sailpoint.object.Form;
+import sailpoint.object.Field;
+import sailpoint.object.Rule;
+import sailpoint.object.DynamicValue;
+import sailpoint.object.Form.Section;
+import sailpoint.transformer.IdentityTransformer;
+import sailpoint.persistence.Sequencer;
+
+import sailpoint.object.Attributes;
+import sailpoint.object.QueryOptions;
+import sailpoint.server.InternalContext;
+import sailpoint.tools.GeneralException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import sailpoint.tools.Util;
+import sailpoint.object.AuditEvent;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.tools.GeneralException;
+import sailpoint.object.Custom;
+import sailpoint.object.ProvisioningPlan.Operation;
+import sailpoint.object.ProvisioningProject;
+import sailpoint.object.Rule;
+import sailpoint.object.WorkItem;
+import sailpoint.object.ApprovalItem;
+import sailpoint.object.ApprovalSet;
+import sailpoint.object.CertificationSchedule;
+import sailpoint.object.CertificationDefinition;
+import sailpoint.api.CertificationScheduler;
+import sailpoint.object.Filter.MatchMode;
+
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.time.Instant;
+import java.time.ZoneId;
+
+import java.io.OutputStream;
+import java.net.InetAddress;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+	 
+	private static Log logUtil = LogFactory.getLog("org.rulelibraries");
+	private static String APP_AD = "SMAS-Active-Directory";//"%%AD_APP_NAME%%";
+
+	public static String STR_IDENTITY_TYPE="IDENTITY";  
+	public static String EMPLOYEE_ID="employeeId"; 
+	public static String STR_DATE_FORMAT="MM/dd/yyyy HH:mm:ss a z";
+	public static  String STR_HIRE_DATE="hire_dt";
+	public static  String WAIT_MODE="DAILY";
+	public static  int WAIT_INTERVAL=1440;
+    public static  String STR_AD_APP_NAME="Active_directory";
+    public static SimpleDateFormat spFormat = new SimpleDateFormat("MM/dd/yyyy");
+    public static String spInputDateFormatStr = "EEE MMM dd HH:mm:ss zzz yyyy";
+    public static SimpleDateFormat spInputDateFormat = new SimpleDateFormat(spInputDateFormatStr);
+
+
+	public static String convertSpDateToStandardFormat(String inDate){
+		String outDateString="";
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Utils :: convertSpDateToStandardFormat :: Enter ");
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Utils :: convertSpDateToStandardFormat :: inDate "+inDate);
+		if(null != inDate){
+			Date inDateObj = spInputDateFormat.parse(inDate);
+			if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Utils :: convertSpDateToStandardFormat :: inDateObj "+inDateObj);
+			outDateString = spFormat.format(inDateObj);
+		}
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Utils :: convertSpDateToStandardFormat :: outDateString "+outDateString);
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Utils :: convertSpDateToStandardFormat :: Exit ");
+		return outDateString;
+	}
+	
+    public static void writeAudit(SailPointContext context, HashMap map, String action){
+		// Grab values from the HashMap
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: START");
+		String target = (!Util.isNullOrEmpty(map.get("target"))) ? map.get("target") : null ;
+		String source = (!Util.isNullOrEmpty(map.get("source"))) ? map.get("source") : null ;
+		String accountName = (!Util.isNullOrEmpty(map.get("accountName"))) ? map.get("accountName") : null ;
+		String appName = (!Util.isNullOrEmpty(map.get("appName"))) ? map.get("appName") : "IIQ" ;
+
+		String attrName = (!Util.isNullOrEmpty(map.get("attrName"))) ? map.get("attrName") : null ;
+		String attrVal = (!Util.isNullOrEmpty(map.get("attrVal"))) ? map.get("attrVal") : null ;
+
+		String string1 = (!Util.isNullOrEmpty(map.get("string1"))) ? map.get("string1") : null ;
+		String string2 = (!Util.isNullOrEmpty(map.get("string2"))) ? map.get("string2") : null ;
+		String string3 = (!Util.isNullOrEmpty(map.get("string3"))) ? map.get("string3") : null ;
+		String string4 = (!Util.isNullOrEmpty(map.get("string4"))) ? map.get("string4") : null ;
+
+    	Attributes attrmap = new Attributes();
+		HashMap newMap = (HashMap) map.get("attrmap");
+		if(null != newMap){
+			Iterator it = newMap.entrySet().iterator();
+				while (it.hasNext()) {
+				Map.Entry pair = (Map.Entry)it.next();
+				attrmap.put((String) pair.getKey(), pair.getValue());
+			}
+		}
+    	
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: Auditor Enabled for action "+action);
+		if(Auditor.isEnabled(action)){
+			AuditEvent event = new AuditEvent();
+			event.setAction(action);
+			event.setApplication(appName);
+			event.setTarget(target);
+			event.setSource(source);
+			event.setAccountName(accountName);
+			
+			// Get executing JVM - this should return correctly? maybe...
+			try {
+				event.setInstance(Util.isNullOrEmpty(map.get("instance")) ? InetAddress.getLocalHost().getHostName() : map.get("instance"));
+			} catch (UnknownHostException e) {
+				e.printStackTrace();
+			}
+			event.setAttributeName(Util.isNullOrEmpty(attrName) ? "Details" : attrName);
+			event.setAttributeValue(Util.isNullOrEmpty(attrVal) ? "None" : attrVal);
+			
+			
+			if(!Util.isNullOrEmpty(string1)) event.setString1(string1);
+			if(!Util.isNullOrEmpty(string2)) event.setString2(string2);
+			if(!Util.isNullOrEmpty(string3)) event.setString3(string3);
+			if(!Util.isNullOrEmpty(string4)) event.setString4(string4);
+			
+			event.setAttributes(attrmap);
+			
+			if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: Event set "+event);
+			Auditor.log(event);
+			if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: Event logged "+event);
+			context.commitTransaction();		
+		}else{
+			if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: Auditor Disabled for action "+action);
+		}		
+
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: writeAudit :: END");
+
+   }
+   
+
+	     
+	//Example field
+   public static String getAttributeValue(SailPointContext context, Identity identity, String strCopyFrom,String strAppName,String strAttribute){
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("Enter getAttributeValue  rule for copying: "+strAttribute+" for "+strCopyFrom);
+		
+		String val=null;
+		if(strCopyFrom.equalsIgnoreCase(STR_IDENTITY_TYPE))
+		{
+			if (identity != null)
+			{
+                val = returnBlank(identity.getAttribute(strAttribute));                
+            }	
+		}else
+		{			
+		
+		Link link=getSafeLink(context,identity,strAppName);
+							
+		if(link!=null)
+		{	
+		val=returnBlank(link.getAttribute(strAttribute));
+		}
+		}
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("Exit getAttributeValue rule: "+strAttribute+"- value :" + val);
+		return returnBlank(val);
+	}	
+	
+	public static int minutesDiff(Date earlierDate, Date laterDate)
+	{
+	    if( earlierDate == null || laterDate == null ) return 0;
+
+	    return (int)((laterDate.getTime()/60000) - (earlierDate.getTime()/60000));
+	}
+	public static long diffChronoDate(Date startDate, Date endDate) {
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: START " );
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The input startDate is " + startDate);
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The input endDate is " + endDate);
+		if(null == startDate || null == endDate){
+			return 0;
+		}
+		ZoneId defaultZoneId = ZoneId.systemDefault();
+		Instant instantStart = startDate.toInstant();
+		Instant instantEnd = endDate.toInstant();
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The instantStart is " + instantStart);
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The instantEnd is " + instantEnd);
+		
+		LocalDate dateBefore = instantStart.atZone(defaultZoneId).toLocalDate(); //LocalDate.parse(startDate.toString());
+		LocalDate dateAfter = instantEnd.atZone(defaultZoneId).toLocalDate(); //LocalDate.parse(endDate.toString());
+
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The dateBefore is " + dateBefore);
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: The dateAfter is " + dateAfter);
+		
+		long noOfDaysBetween = ChronoUnit.DAYS.between(dateBefore,dateAfter);
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: noOfDaysBetween " + noOfDaysBetween);
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("diffChronoDate :: END " );
+		return noOfDaysBetween;
+	}
+	
+	public static Date convertDate(String inputDate, String inputFormat) {
+
+		Date date = null;
+		
+		Long adexpireDate = null;
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: The input date is " + inputDate);
+
+		try {
+			SimpleDateFormat inputFormatter = new SimpleDateFormat("yyyy-MM-ss HH:mm:ss");
+			//SimpleDateFormat inputFormatter = new SimpleDateFormat(inputFormat);
+			SimpleDateFormat outputFormatter = new SimpleDateFormat("MM/dd/yyyy");
+			//SimpleDateFormat sdf = new SimpleDateFormat(strFormat);
+			
+			
+			if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: inputFormatter " + inputFormatter);
+			date = inputFormatter.parse(inputDate);
+			if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: date " + date);
+			
+			if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: outputFormatter " +outputFormatter.format(date));
+		} catch(ParseException ex) {
+			ex.printStackTrace();
+
+		}
+		if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: date " + date);
+
+		if(logUtil.isDebugEnabled()) logUtil.debug("convertDate :: Exit ");
+
+		return date;
+	}
+	
+	
+	public static Identity getIdentity(SailPointContext context, String strAttributeName,String strAttributeValue) throws GeneralException{
+		if(logUtil.isDebugEnabled()) logUtil.debug("Enter getIdentity  rule for column name: "+strAttributeName+" for "+strAttributeValue);
+		
+		
+		Identity identity = null;
+		
+			strAttributeValue=returnBlank(strAttributeValue);
+			
+			 QueryOptions opsRequestee = new QueryOptions();
+			 opsRequestee.add(new Filter[] { Filter.ignoreCase(Filter.eq(strAttributeName,strAttributeValue))});
+			 
+			
+			 Iterator idenRequesteeRows = context.search(Identity.class, opsRequestee);
+		
+			 if (idenRequesteeRows != null)
+				{
+					while (idenRequesteeRows.hasNext()) 
+					{
+						identity =idenRequesteeRows.next();
+						
+					}
+					
+				}
+		Util.flushIterator(idenRequesteeRows);
+		
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("Exit getAttributeValue rule: "+identity+ "- value :");
+		return identity;
+	}	
+
+
+
+
+	public static Link getSafeLink(SailPointContext context,Identity identity, String appName){
+		Link link=null;
+	
+		if(logUtil.isDebugEnabled()) logUtil.debug("Enter library getSafeLink rule");
+		
+		try{
+			IdentityService is = new IdentityService(context);
+			Application app = context.getObjectByName(Application.class, appName);
+			//0726 Code Review This is allowed as getLinks is for a specific App
+			List lnkList=is.getLinks(identity, app); 
+	
+			if(logUtil.isDebugEnabled()) logUtil.debug("The LinkList is"+lnkList);
+	
+			if(null!=lnkList && lnkList.size()>0) {
+				link=(Link)lnkList.get(0);
+			}
+	
+			//0726 Code Review not to use the new Link call directly
+			// Reviewer to get back to us with alternative appraoches
+			if (link == null){
+				link = new Link();
+			}
+	
+			context.decache(app);
+	
+			if(logUtil.isDebugEnabled()) logUtil.debug("Enter library getSafeLink rule"+link);
+		}catch(Exception ex){
+			ex.printStackTrace();
+		}
+		return link;
+	} 
+
+
+  
+	public static String returnBlank(Object string){   	
+	   if(string != null  && !string.toString().trim().isEmpty())
+		   return string.toString().trim();
+		   else
+			return new String("");   
+	}
+
+	/**
+	 * This is a helper method for pulling all Request Item level details
+	 * @return HashMap
+	 */ 
+	 public Object getCustomValue(SailPointContext context,String customObjectName, String customObjectKey) throws GeneralException
+     {
+     
+      Object val="";
+     
+      if(logUtil.isDebugEnabled()) logUtil.trace("Inside getCustomValue: customObjectName is: " + customObjectName+ " and customObjectKey is :"+customObjectKey);
+     
+      Custom customObj = context.getObjectByName(Custom.class,customObjectName);
+	
+	   if (customObj != null) {
+			val = customObj.get(customObjectKey);
+	   }
+		if(logUtil.isDebugEnabled()) logUtil.trace("The val is " + val);
+
+		return val;
+     }
+     
+     /**
+	 * This is a helper method for pulling all Request Item level details
+	 * @return HashMap
+ 	*/ 
+	 public Object getAllowedValues(SailPointContext context,String customObjectName, String customObjectKey) throws GeneralException{
+      
+	       HashMap mapObject=getCustomValue(context,customObjectName,customObjectKey);
+	       
+	       Iterator it = mapObject.entrySet().iterator();
+	       
+	       ArrayList retList = new ArrayList();
+       
+	       while (it.hasNext()) {
+		        Map.Entry pair = it.next();
+		        
+		        String key=pair.getKey();
+		        String value=pair.getValue();
+		      
+		        ArrayList valLst = new ArrayList(); 
+		        
+		        valLst.add(key);
+		        valLst.add(key+" - "+value);
+		        retList.add(valLst);
+	       
+	    	}
+      
+			if(logUtil.isDebugEnabled()) logUtil.trace("The val is " + retList);
+			
+			return retList; 
+     }
+     
+     
+
+	 /**
+	 * This is a helper method for pulling role attributes values
+	  * @return String or List
+	 */ 
+	 public Object getRoleAttribute(SailPointContext context,String roleName, String attrName) throws GeneralException{
+		Object val="";
+		if(logUtil.isDebugEnabled()) logUtil.trace("Inside getRoleAttribute: attrName is: " + attrName );
+		Bundle spanBundle=context.getObjectByName(Bundle.class,roleName);
+		
+		if (spanBundle != null) {
+			val = returnBlank(spanBundle.getAttribute(attrName));
+		}
+		if(logUtil.isDebugEnabled()) logUtil.trace("The val is " + val);
+		
+		return val;
+     }
+   
+	public String getUniquePersonaName(String useInName,String inDeptNum){
+      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName :: Enter");
+      	
+      	//SEND 0916 No 3 Char Suffix
+      	//String useInName = inName.substring(0,inName.length()-3);
+		//create the secondary Persona identity
+      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName checking for  :: useInName "+useInName);
+		
+		Identity existingIdObj = null;
+	    String isUnique = "N";
+	    String existingInDept = "N";
+	    int i = 1;
+		
+		if(null != inDeptNum){
+
+			QueryOptions qo = new QueryOptions();
+		    List listOfFilters = new ArrayList();
+			listOfFilters.add(Filter.eq("workgroup",false));
+			listOfFilters.add(Filter.like("deptNumber",inDeptNum,Filter.MatchMode.EXACT));
+			listOfFilters.add(Filter.like("spin", useInName,Filter.MatchMode.EXACT));
+			qo.addFilter(Filter.and(listOfFilters));
+
+			Iterator resultIterator = context.search(Identity.class, qo);
+			if(resultIterator != null){
+				while(resultIterator.hasNext()) {
+					existingIdObj = (Identity)resultIterator.next();
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName checking for  :: existingIdObj "+existingIdObj.getName());
+			    }
+			    if(null != existingIdObj ){
+			    	existingInDept = "Y";
+			    }
+			}
+		}
+
+	    try{
+	        //if(existingInDept.equals("Y")){
+	        //	return null;
+	        //}
+	    	while(isUnique.equals("N")){
+				newPName = useInName+"S0"+i;
+		      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName checking for  :: newPName "+newPName);
+	    		Identity sExists = context.getObjectByName(Identity.class,newPName);
+	    		if(null != sExists){
+	    			isUnique = "N";
+	    			i++;
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName checking for  :: isUnique "+isUnique+" and i "+i);
+	    		}else{
+	    			//Make sure you check in the Dept
+	    			isUnique = "Y";
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName checking for  :: isUnique N "+isUnique+" and i "+i );
+	    		}
+	    	}
+	      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName :: newPName "+newPName);
+	    }catch(Exception idE){
+	      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName :: Exception "+idE.getMessage());
+	    }
+	      	
+      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getUniquePersonaName :: Exit");
+      	return newPName;
+	}
+
+	public static String getPersonaStatusCode(String inPstatus){
+     	//if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: Enter");
+     	//if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: input status "+inPstatus);
+ 		String stsCode = null;
+		try{
+			Custom pCustomStatusMap = context.getObjectByName(Custom.class,"Custom-SEN-PersonaSelections-Mapping");
+			HashMap psMap = pCustomStatusMap.get("PersonaStatusMap");
+			stsCode	= psMap.get(inPstatus);
+	     	//if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: output status "+stsCode);
+		}catch(Exception pe){
+	     	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: Exception "+pe.getMessage());
+		}	
+		
+     	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: stsCode "+stsCode.length());
+     	//if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPersonaStatusCode :: Exit");
+     	return Util.trimWhitespace(stsCode);
+ 	
+	}   
+   
+	public static String convertDate(Object inputDate, String strFormat) {
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: convertDate :: Enter ");
+		String strDate="";
+		if(null != inputDate){		
+			try {
+				strDate = new SimpleDateFormat(strFormat).format(inputDate);
+			} catch(Exception ex) {
+				if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: convertDate :: Exception "+ex.getMessage());
+			}
+		}
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: convertDate ::  strDate ::  "+strDate);
+		
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: convertDate :: Exit ");
+
+		return strDate;
+	}
+	
+	
+	
+
+	public static Date getPastDate(int inYears) {
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPastDate :: Enter ");
+		
+		int currentYear = 0;
+		
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		Calendar cal = Calendar.getInstance();
+		Date targetDate = new  Date();
+		currentYear = cal.get(Calendar.YEAR);
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPastDate :: currentYear "+currentYear);
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPastDate :: inYears "+inYears);
+
+		cal.set(Calendar.YEAR, currentYear-inYears);
+		
+		targetDate = sdf.parse(sdf.format(cal.getTime()));
+
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPastDate ::  targetDate ::  "+targetDate);
+		if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getPastDate :: Exit ");
+
+		return targetDate;
+	}
+
+
+    public synchronized String getSPINNextCounter() throws GeneralException
+    {
+        logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: Enter " );
+
+		int nextCounter = 0;
+		Map acctTypeCountersMap = null;
+		String nextCounterString = "";
+		logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: getSPINNextCounter- get Custom-SEN-SPINCounter");
+		Custom configuration = context.getObjectByName(Custom.class, "Custom-SEN-SPINCounter");
+
+		if (configuration != null) {
+			logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: getSPINNextCounter- get attributes");
+			Attributes attributes = configuration.getAttributes();
+			if (attributes != null) {
+				logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: getSPINNextCounter- get the SPIN counter value");
+				Map SPINCounterMap = attributes.getMap();
+				if (SPINCounterMap != null) {
+					String currentCounter = (String) SPINCounterMap.get("SPINCounter");
+					logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: getSPINNextCounter- currentCounter = "+currentCounter);
+
+					int currentCounterValue = Integer.parseInt(currentCounter);
+					nextCounter = currentCounterValue + 1;
+					nextCounterString = String.valueOf(nextCounter);
+					logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter :: getSPINNextCounter- nextCounterString="+nextCounterString);
+
+					SPINCounterMap.put("SPINCounter", nextCounterString);
+					attributes.setMap(SPINCounterMap);
+
+					configuration.setAttributes(attributes);
+					context.saveObject(configuration);
+					context.commitTransaction();
+				}
+			}
+		}
+
+		logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter "+nextCounterString);
+		logUtil.debug("RulesLibrary-SEN-Utils :: getSPINNextCounter Exit ");
+		return nextCounterString;        
+    }  
+    
+     
+	public static int generateIdentityNumber(){
+		 //  double x = Math.random();
+		 //  return (int) (x*300000);
+		  
+		 String Sql = "sql:select next value for ORDER_SEQ from SYSIBM.SYSDUMMY1";
+		 Object number="";
+		 Iterator it = context.search(Sql,null,null);
+		       
+		 if (it != null){
+		    while(it.hasNext())
+			{
+				HashMap userMap=new HashMap();
+				number = it.next();
+				
+		    }
+		 }
+	     
+	     return new Integer(number).intValue();
+	}   
+  
+
+	public void scheduleorgWorkflow(HashMap provReq, String workflowName,String reqName){
+		logUtil.debug("RulesLibrary-SEN-Utils :: scheduleorgWorkflow : Enter ");
+		Map provReq = workflow.get("requestMap");
+		try{
+			String startDateStr = provReq.get("startdate");
+			//String startTimeStr = provReq.get("starttime");
+			
+			logUtil.debug("RulesLibrary-SEN-Utils :: Incoming Start date : "+startDateStr);
+			//logUtil.debug("RulesLibrary-SEN-Utils :: Incoming Start time : "+startTimeStr);
+			//startTimeStr = startTimeStr.substring(0,startTimeStr.length()-2);
+			//logUtil.debug("RulesLibrary-SEN-Utils :: Start time without am/pm "+startTimeStr);
+			
+			DateFormat sdf = new SimpleDateFormat("MM/dd/yyyy HH:mm");
+	    	Date scheduleStartDate = sdf.parse(startDateStr+" "+startTimeStr);
+	    	logUtil.debug("RulesLibrary-SEN-Utils :: Formatted start date"+scheduleStartDate);
+			//Current time 
+			SimpleDateFormat format = new SimpleDateFormat("yyyyMMdd_hh:mm:ss.SSS");
+	    	Date now = new Date();
+	    	String dtString = format.format(now);
+	     
+			logUtil.debug("RulesLibrary-SEN-Utils ::  Build add request object");
+	   	
+	  		logUtil.debug("RulesLibrary-SEN-Utils :: Loading workflow : "+workflowName);
+	  	
+	  		Workflow addReqWorkflow = context.getObjectByName(Workflow.class, workflowName);
+	   	
+	  		if (addReqWorkflow == null) {
+			  	logUtil.debug("RulesLibrary-SEN-Utils :: Could not find a workflow named: " + workflowName);
+			  	//addError("RCPT_FAILURE","Could not find a workflow named: " + workflowName, workflow);
+			  	return;
+			}
+			logUtil.debug("RulesLibrary-SEN-Utils :: Loading workflow : "+workflowName);
+			//Add request arguments
+			logUtil.debug("RulesLibrary-SEN-Utils :: Setting Request arguments for Workflow operation");
+			Attributes reqArgs = new Attributes();
+			reqArgs.put(StandardWorkflowHandler.ARG_REQUEST_DEFINITION,sailpoint.request.WorkflowRequestExecutor.DEFINITION_NAME);
+			reqArgs.put(sailpoint.workflow.StandardWorkflowHandler.ARG_WORKFLOW,workflowName);
+			reqArgs.put(sailpoint.workflow.StandardWorkflowHandler.ARG_REQUEST_NAME, reqName);
+			reqArgs.put("requestName", reqName ); 
+			
+			// Add wfArgs
+			logUtil.debug("RulesLibrary-SEN-Utils ::  Setting workflow arguments for add operation");
+			
+			Attributes wfArgs = new Attributes();
+			//Get all current workflow arguments and add to addRequestWorklow
+			Attributes parentWfAttrs = workflow.getVariables();
+			Iterator it = parentWfAttrs.getKeys().iterator();
+			while(it.hasNext()){
+		    	String key = it.next();
+		     	logUtil.debug("RulesLibrary-SEN-Utils ::  parent workflow Key : "+key);
+		     	Object value = parentWfAttrs.get(key);
+		    	wfArgs.put(key,value);
+		    }
+			
+			wfArgs.put("operation", "Add" );
+			wfArgs.put("workflow", addReqWorkflow.getId());
+			
+			logUtil.debug("RulesLibrary-SEN-Utils ::  Workflow arguments for add request : "+wfArgs);
+			reqArgs.putAll(wfArgs);
+			logUtil.debug("RulesLibrary-SEN-Utils :: Creating new request object for add operation for start date : "+scheduleStartDate);
+	  	
+	  		Request req = new Request();
+	    	RequestDefinition reqDef = context.getObjectByName(RequestDefinition.class, "Workflow Request");
+	    
+	    	req.setDefinition(reqDef);
+	    	req.setEventDate(scheduleStartDate);
+	    	req.setName(reqName);
+			req.setAttributes(reqDef,reqArgs);
+			RequestManager.addRequest(context, req);
+			logUtil.debug("RulesLibrary-SEN-Utils :: Request Object created");
+		}catch(Exception e){
+			logUtil.debug("RulesLibrary-SEN-Utils :: Exception thrown while scheduling Add Role Request: " + e.toString());
+			addError("RCPT_FAILURE","Exception thrown while scheduling Add Role Request: " + e.toString(), workflow);
+		}
+     
+    	logUtil.debug("RulesLibrary-SEN-Utils :: scheduleorgWorkflow : Exit");
+     
+	}  
+
+
+  /* Build identityModel to display FORM data */
+  public Map buildOnboardingCheckListModel(SailPointContext context, Workflow workflow, String useCase){
+  
+    //useCase set to SAA-HR-Hire-Paperwork
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListModel : Enter");
+  
+    if(null == useCase){
+	    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListModel : input useCase is null ");
+    	useCase = "SAAHRHirePaperwork";
+    	logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListModel : useCase set to "+useCase);
+	}
+    
+    String employeeName = workflow.get("employeeName");
+    Identity identity = context.getObjectByName(Identity.class, employeeName);
+    workflow.put("identityName", employeeName);
+    workflow.put("identityDisplayName", identity.getDisplayableName());
+    
+    Map model = new HashMap();
+    model.put("AccountsType","OnBoarding");
+    model.put("identityDisplayName",identity.getDisplayableName());
+    model.put("identityName",employeeName);
+    model.put("useCase",useCase);
+    
+    //Var
+    List saaHrCheckListKeys = new ArrayList();
+ 	//get the custom object for Sections and Fields
+	Custom nhPaperWorkObj = context.getObjectByName(Custom.class,"Custom-SEN-NHPR");
+    //Form onBoardingCheckListForm = new Form();
+    Form formOrig = context.getObjectByName(Form.class, "Form-SEN-OnboardingChecklist");
+    Form onBoardingCheckListForm = (Form) formOrig.deepCopy(context);  
+	//onBoardingCheckListForm.setTitle("Onboarding Checklist");
+	String currentFormName = "Onboarding Checklist - "+identity.getDisplayableName();
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : currentFormName "+currentFormName);
+	
+	onBoardingCheckListForm.setName(currentFormName);
+	onBoardingCheckListForm.setPageTitle("Onboarding Check List for "+identity.getDisplayableName());
+	if(null != nhPaperWorkObj){
+	 
+    	 logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : nhPaperWorkObj "+nhPaperWorkObj);
+		 Map validMap  = nhPaperWorkObj.get("ValidNHPR");
+		 //Confirm that Custom Object exists
+		 if(null != validMap){
+		 	 Map saaHRPaperWork = validMap.get(useCase);
+	    	 logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : saaHRPaperWork "+saaHRPaperWork);
+
+			 if(null != saaHRPaperWork){
+		        Form.Section section = null;
+		        section = new Form.Section();
+		        section.setName("SAAHRHirePaperwork");
+		        section.setLabel("New Hire Paperwork");
+		        section.setColumns(2);
+				boolean flgT = true;
+				
+				
+				for(Map.Entry saaEnt : saaHRPaperWork.entrySet()){
+
+					//Just lable
+					Field ckFLab = new Field();
+					ckFLab.setName(saaEnt.getKey()+"EMP");
+					ckFLab.setType("boolean");
+					ckFLab.setDisplayName("Submitted or Completed : "+saaHRPaperWork.get(saaEnt.getKey()));
+					ckFLab.setPostBack(true);
+					section.add(ckFLab);
+					//onBoardingCheckListForm.add(ckFLab);
+					
+
+					//saaHrCheckListKeys.add(saaEnt.getKey());
+					Field ckF = new Field();
+					ckF.setName(saaEnt.getKey()+"HR");
+					ckF.setType("boolean");
+					ckF.setPostBack(true);
+					ckF.setDisplayName("Received");
+			    	if(ckF != null){
+			          Rule hrRule = context.getObjectByName(Rule.class,"Rule-SEN-HROnlyField");
+			          hrRule.setAttribute("currentForm",currentFormName);
+			          DynamicValue dv = new DynamicValue();
+			          dv.setRule(hrRule);
+			          ckF.setHiddenDefinition(dv);
+			          //ckF.setHidden(true);
+			        }
+					section.add(ckF);
+					//onBoardingCheckListForm.add(ckF);
+				}
+				//To verify all check boxes checked for onboarding
+
+				Field onBordingComplete = new Field();
+				onBordingComplete.setName("onBordingComplete");
+				onBordingComplete.setType("string");
+				onBordingComplete.setDynamic(true);
+				onBordingComplete.setPostBack(true);
+				onBordingComplete.setDisplayName("Onboarding Complete");
+				onBordingComplete.setHidden(true);
+				
+		    	if(onBordingComplete != null){
+		          Rule onBordingCompleteRule = context.getObjectByName(Rule.class,"Rule-SEN-ComputedOnboardingValue");
+		          onBordingCompleteRule.setAttribute("currentForm",currentFormName);
+		          onBordingComplete.setFieldRule(onBordingCompleteRule);
+		        }
+				section.add(onBordingComplete);
+
+
+				//To verify all submitted items received by HR
+
+				Field hrConfirmationComplete = new Field();
+				hrConfirmationComplete.setName("hrConfirmationComplete");
+				hrConfirmationComplete.setType("string");
+				hrConfirmationComplete.setDynamic(true);
+				hrConfirmationComplete.setPostBack(true);
+				hrConfirmationComplete.setDisplayName("Received");
+				hrConfirmationComplete.setHidden(true);
+				
+		    	if(hrConfirmationComplete != null){
+		          Rule hrConfirmationCompleteRule = context.getObjectByName(Rule.class,"Rule-SEN-ComputedHRAcknowledgementValue");
+		          hrConfirmationCompleteRule.setAttribute("currentForm",currentFormName);
+		          hrConfirmationComplete.setFieldRule(hrConfirmationCompleteRule);
+		        }
+				section.add(onBordingComplete);
+				
+				onBoardingCheckListForm.add(section);
+				//Add Save Button
+				Form.Button sButton = new Form.Button();
+				sButton.setAction("save");
+				sButton.setLabel("Save");
+				//List<Form.Button> bList = new ArrayList();
+				List bList = new ArrayList();
+				bList.add(sButton);
+				onBoardingCheckListForm.addButtons(bList);
+
+			 }
+		 }	 	
+    } 
+    workflow.put("onBoardingCheckListForm",onBoardingCheckListForm);
+        
+    
+    IdentityTransformer transformer = new IdentityTransformer(context);
+    model.put(IdentityTransformer.ATTR_TRANSFORMER_CLASS, transformer.getClass().getName());
+    model.put(IdentityTransformer.ATTR_TRANSFORMER_OPTIONS, "");
+    
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListModel : model "+model);
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListModel : Exit");
+    return model;
+  }  
+   
+
+
+  /* Build identityModel to display FORM data */
+  public Form buildOnboardingCheckListForm(SailPointContext context, Workflow workflow, String useCase){
+  
+    //useCase set to SAA-HR-Hire-Paperwork
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : Enter");
+  
+    if(null == useCase){
+	    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : input useCase is null ");
+    	useCase = "SAA-HR-Hire-Paperwork";
+    	logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : useCase set to "+useCase);
+	}
+    
+    String employeeName = workflow.get("employeeName");
+    if(null == employeeName){
+    	logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : employeeName is null from WF "+employeeName);
+    	employeeName = "3900";
+    	logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : employeeName set to "+employeeName);
+    }
+    Identity identity = context.getObjectByName(Identity.class, employeeName);
+    workflow.put("identityName", employeeName);
+    workflow.put("identityDisplayName", identity.getDisplayableName());
+    
+    Map model = new HashMap();
+    model.put("AccountsType","OnBoarding");	
+    model.put("identityDisplayName",identity.getDisplayableName());
+    model.put("identityName",employeeName);
+    model.put("useCase",useCase);
+    
+    //Var
+    List saaHrCheckListKeys = new ArrayList();
+    
+ 	//get the custom object for Sections and Fields
+	Custom nhPaperWorkObj = context.getObjectByName(Custom.class,"Custom-SEN-NHPR");
+    //Form onBoardingCheckListForm = new Form();
+    Form formOrig = context.getObjectByName(Form.class, "Form-SEN-OnboardingChecklist");
+    Form onBoardingCheckListForm = (Form) formOrig.deepCopy(context);  
+	//onBoardingCheckListForm.setTitle("Onboarding Checklist");
+	onBoardingCheckListForm.setName("Onboarding Checklist - "+identity.getDisplayableName());
+	onBoardingCheckListForm.setPageTitle("Onboarding Check List for "+identity.getDisplayableName());
+	 if(null != nhPaperWorkObj){
+	 
+    	 logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : nhPaperWorkObj "+nhPaperWorkObj);
+		 Map validMap  = nhPaperWorkObj.get("ValidNHPR");
+		 //Confirm that Custom Object exists
+		 if(null != validMap){
+		 	 Map saaHRPaperWork = validMap.get(useCase);
+	    	 logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : saaHRPaperWork "+saaHRPaperWork);
+
+			 if(null != saaHRPaperWork){
+		        Form.Section section = null;
+		        section = new Form.Section();
+		        section.setName("SAA-HR-Hire-Paperwork");
+		        section.setLabel("New Hire Paperwork");
+		        section.setColumns(3);
+				boolean flgT = true;
+				
+				Field ckFHeader1 = new Field();
+				//ckFHeader.setDisplayName("by HR");
+				ckFHeader1.setName("by HR");
+				ckFHeader1.setDisplayOnly(flgT);
+				ckFHeader1.setType("textarea");
+				
+				//ckFHeader1.setDisplayOnly(flgT);
+				Field ckFHeader2 = new Field();
+				//ckFHeader2.setDisplayName("by Employee");
+				ckFHeader2.setName("by Employee");
+				ckFHeader2.setDisplayOnly(flgT);
+				ckFHeader2.setType("textarea");
+
+				Field ckFHeader3 = new Field();
+				//ckFHeader3.setDisplayName("Description");
+				ckFHeader3.setName("Description");
+				ckFHeader3.setDisplayOnly(flgT);
+				ckFHeader3.setType("textarea");
+
+				
+				section.add(ckFHeader1);
+				section.add(ckFHeader2);
+				section.add(ckFHeader3);
+				
+				for(Map.Entry saaEnt : saaHRPaperWork.entrySet()){
+					//saaHrCheckListKeys.add(saaEnt.getKey());
+					Field ckF = new Field();
+					ckF.setName(saaEnt.getKey()+"-HR");
+					ckF.setType("boolean");
+					ckF.setDisplayName("Received");
+					section.add(ckF);
+
+					//Just lable
+					Field ckFLab = new Field();
+					ckFLab.setName(saaHRPaperWork.get(saaEnt.getKey()));
+					ckFLab.setDisplayName(saaHRPaperWork.get(saaEnt.getKey()));
+					ckFLab.setDisplayOnly(flgT);
+					//ckFLab.setType("textarea");
+					section.add(ckFLab);
+
+					
+					//second checkbox with lable
+					Field ckFEmp = new Field();
+					ckFEmp.setName(saaEnt.getKey()+"-EMP");
+					ckFEmp.setType("boolean");
+					ckFEmp.setDisplayName("Submitted or Completed");
+					//ckFEmp.setDisplayName(saaHRPaperWork.get(saaEnt.getKey()));
+					section.add(ckFEmp);
+
+					
+				}
+				onBoardingCheckListForm.add(section);
+			 }
+		 }	 	
+    } 
+    workflow.put("onBoardingCheckListForm",onBoardingCheckListForm);
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : onBoardingCheckListForm "+onBoardingCheckListForm.toXml());
+    logUtil.debug("RulesLibrary-SEN-Utils :: buildOnboardingCheckListForm : Exit");
+    return onBoardingCheckListForm;
+  }  
+
+
+   
+  public List getIdentitiesByRole(String inputRoleName ){
+  
+     	logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRole : Enter");
+  		List outIdentities = new ArrayList();
+  		try{
+  			QueryOptions qo = new QueryOptions();
+		    List listOfFilters = new ArrayList();
+			listOfFilters.add(Filter.eq("inactive",false));
+			listOfFilters.add(Filter.eq("workgroup",false));
+			listOfFilters.add(Filter.eq("assignedRoles.name",inputRoleName));
+	     	logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRole : inputRoleName "+inputRoleName);
+			
+			qo.addFilter(Filter.and(listOfFilters));
+
+			Iterator resultIterator = context.search(Identity.class, qo);
+			if(resultIterator != null){
+				while(resultIterator.hasNext()) {
+					existingIdObj = (Identity)resultIterator.next();
+			      	outIdentities.add(existingIdObj);
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRole checking for  :: existingIdObj "+existingIdObj.getName());
+			    }
+			    if(null != outIdentities && outIdentities.size()>0){
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRole checking for  :: outIdentities "+outIdentities);
+			    }
+			}
+  		}catch(Exception ee){
+			  if(logUtil.isDebugEnabled()) logUtil.debug("Exception in: RulesLibrary-SEN-Utils :: getIdentitiesByRole ::  "+ee.getMessage());
+  		}
+  		logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRole : Exit");
+  		return outIdentities;
+  }
+
+  public List getIdentitiesByRoleInDepartment(String inputRoleName,String deptNum ){
+  
+     	logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment : Enter");
+  		List outIdentities = new ArrayList();
+  		try{
+  			QueryOptions qo = new QueryOptions();
+		    List listOfFilters = new ArrayList();
+			listOfFilters.add(Filter.eq("inactive",false));
+			listOfFilters.add(Filter.eq("workgroup",false));
+			listOfFilters.add(Filter.eq("deptNumber",deptNum));
+			listOfFilters.add(Filter.eq("assignedRoles.name",inputRoleName));
+	     	logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment : inputRoleName "+inputRoleName);
+			
+			qo.addFilter(Filter.and(listOfFilters));
+
+			Iterator resultIterator = context.search(Identity.class, qo);
+			if(resultIterator != null){
+				while(resultIterator.hasNext()) {
+					existingIdObj = (Identity)resultIterator.next();
+			      	outIdentities.add(existingIdObj);
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment checking for  :: existingIdObj "+existingIdObj.getName());
+			    }
+			    if(null != outIdentities && outIdentities.size()>0){
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment checking for  :: outIdentities "+outIdentities);
+			    }
+			}
+  		}catch(Exception ee){
+			  if(logUtil.isDebugEnabled()) logUtil.debug("Exception in: RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment ::  "+ee.getMessage());
+  		}
+  		logUtil.debug("RulesLibrary-SEN-Utils :: getIdentitiesByRoleInDepartment : Exit");
+  		return outIdentities;
+  }   
+   
+
+  public List getMissingDOBWorkItemOwner(String identityName){
+  
+     	logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : Enter");
+  		List outIdentities = new ArrayList();
+
+		String inDept = null;
+		String cotrId = null;
+		String pStatus = null;
+		if(null != identityName){
+			Identity tUser = context.getObjectByName(Identity.class,identityName);
+			pStatus = tUser.getAttribute("personaStatus");
+			inDept = tUser.getAttribute("deptNumber");
+			cotrId = tUser.getAttribute("cotrIdentity");
+			logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : inDept "+inDept);
+			logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : pStatus "+pStatus);
+			logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : cotrId "+cotrId);
+		}
+		
+		
+		
+		//String wgToEmail = getDeptWGEmails(inDept);
+  		//logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : wgToEmail "+wgToEmail);
+  		
+		try{
+			Identity wgObj = null;
+			if(!Util.isNullOrEmpty(inDept)){
+				if(null != pStatus){
+					if("Contractor".equalsIgnoreCase(pStatus)){
+						if(null != cotrId){
+							Identity corObj = context.getObjectByName(Identity.class,cotrId);
+							if(null != corObj){
+								logUtil.debug("RulesLibrary-SEN-Notifications :: getMissingDOBWorkItemOwner ::  SAA DEPT " + inDept+" so setting owner COR" );
+								outIdentities.addAll(corObj);
+							}
+						}
+					}else{
+						List hrUserList = getIdentitiesByRole("Human Resources Personnel (HR)");
+						List saaHrUserList = new ArrayList(); //getIdentitiesByRole("Human Resources Personnel (HR)");
+						List secHrUserList = new ArrayList(); //getIdentitiesByRole("Human Resources Personnel (HR)");
+						//This will have the list of HRs in SAA or SEC SEN
+						if(null != hrUserList && hrUserList.size() >0){
+							for(Identity hrObj: hrUserList){
+								String hrdept = hrObj.getAttribute("deptNumber");
+								logUtil.debug("RulesLibrary-SEN-Notifications :: getMissingDOBWorkItemOwner : hrdept "+hrdept);
+								if(isSAADepartment(hrdept)){
+									saaHrUserList.add(hrObj);
+								}else if(isSecSenDepartment(hrdept)){
+									secHrUserList.add(hrObj);
+								}
+							}
+						}
+						if(isSAADepartment(inDept)){
+							logUtil.debug("RulesLibrary-SEN-Notifications :: getMissingDOBWorkItemOwner ::  SAA DEPT " + inDept+" so setting owner to SAA Human Resources Personnel (HR)" );
+							outIdentities.addAll(saaHrUserList);
+						}else if(isSecSenDepartment(inDept)){
+							logUtil.debug("RulesLibrary-SEN-Notifications :: getMissingDOBWorkItemOwner ::  SecSEn DEPT " + inDept+" so setting owner to SecSen Human Resources Personnel (HR)" );
+							outIdentities.add(secHrUserList);
+						}
+
+					}
+				}
+
+			}
+			if(null == outIdentities || outIdentities.size() <1){
+				logUtil.debug("RulesLibrary-SEN-Notifications :: getMissingDOBWorkItemOwner ::  NO OWNER FOUND ASSIGNIN TO IAM ADMINS" );
+				Identity ownObj = context.getObjectByName(Identity.class, "IAM Administrators");
+				outIdentities.add(ownObj);
+			}
+  		logUtil.debug("RulesLibrary-SEN-Notifications :: getWorkgroupOrHREmails : toEmailAddString "+toEmailAddString);
+		
+  		}catch(Exception ee){
+			  if(logUtil.isDebugEnabled()) logUtil.debug("Exception in: RulesLibrary-SEN-Utils :: getWorkgroupOrHREmails ::  "+ee.getMessage());
+  		}
+
+		/*
+  		try{
+  			QueryOptions qo = new QueryOptions();
+		    List listOfFilters = new ArrayList();
+			listOfFilters.add(Filter.eq("inactive",false));
+			listOfFilters.add(Filter.eq("workgroup",false));
+			listOfFilters.add(Filter.eq("deptNumber",inDept));
+			listOfFilters.add(Filter.eq("assignedRoles.name",inputRoleName));
+	     	logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : inputRoleName "+inputRoleName);
+			
+			qo.addFilter(Filter.and(listOfFilters));
+
+			Iterator resultIterator = context.search(Identity.class, qo);
+			if(resultIterator != null){
+				while(resultIterator.hasNext()) {
+					existingIdObj = (Identity)resultIterator.next();
+			      	outIdentities.add(existingIdObj);
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner checking for  :: existingIdObj "+existingIdObj.getName());
+			    }
+			    if(null != outIdentities && outIdentities.size()>0){
+			      	if(logUtil.isDebugEnabled()) logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner checking for  :: outIdentities "+outIdentities);
+			    }
+			}
+  		}catch(Exception ee){
+			  if(logUtil.isDebugEnabled()) logUtil.debug("Exception in: RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner ::  "+ee.getMessage());
+  		}*/
+		
+  		logUtil.debug("RulesLibrary-SEN-Utils :: getMissingDOBWorkItemOwner : Exit");
+  		return outIdentities;
+  }   
+
+
+    //For WorkItem
+	//BE CAUTIOUS ABOUT THIS METHOD AS THIS IS BEING USED BY ALL WFs
+  	public Boolean createManageAccessWorkItem(String onboardedUser,String reqName,String eventName){
+        logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  Enter " + onboardedUser);
+        Boolean result = false;
+        Calendar expiration = Calendar.getInstance();
+        Identity targetIdentity = context.getObjectByName(Identity.class, onboardedUser);
+        String idDept = targetIdentity.getAttribute("deptNumber");
+        
+        Identity requester = context.getObjectByName(Identity.class, reqName);
+        logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  Create workitem now");
+        
+        WorkItem item = new WorkItem();
+        item.setType(WorkItem.Type.ManualAction);
+        //owners should be SAA LAN Admins OR infosys SEC OR System Admins
+		if(!Util.isNullOrEmpty(idDept)){
+			if(isSAADepartment(idDept)){
+				logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  SAA DEPT " + idDept+" so setting owner to SAA LAN Administrators" );
+				item.setOwner(context.getObjectByName(Identity.class, "SAA LAN Administrators"));
+			}else if(isSecSenDepartment(idDept)){
+				logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  SecSEn DEPT " + idDept+" so setting owner to SecSen LAN Administrators" );
+				item.setOwner(context.getObjectByName(Identity.class, "SEC LAN Administrators"));
+			}else{
+				logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  OTHER DEPT " + idDept+" so setting owner to Systems Administrator (SA)" );
+				List ownerList = getIdentitiesByRoleInDepartment("Systems Administrator (SA)",idDept);
+				//item.setOwner((Object)ownerList);
+				if(ownerList!=null && !ownerList.isEmpty()){
+					item.setOwner((Identity)ownerList.get(0));
+				}
+			}
+		}else{
+			item.setOwner(context.getObjectByName(Identity.class, "IAM Administrators"));
+		}
+        item.setRequester(requester);
+        
+        Sequencer sequencer = new Sequencer();
+        item.setName(sequencer.generateId(context, item));
+        item.setRenderer("lcmManualActionsRenderer.xhtml");
+        item.setLevel(WorkItem.Level.Normal);
+        item.setTarget(targetIdentity);
+        item.setTargetClass(Identity.class.getName());
+        
+        String itmDesc = null;
+		
+		if("CreatePersona".equalsIgnoreCase(eventName)){
+			itmDesc = "Review Active Directory Accont for "+targetIdentity.getDisplayableName()+" Created with TDI "+onboardedUser+ " if additional security groups required please proceed to Manage User Access in side bar menu.";
+		}else if("ReactivateIdentity".equalsIgnoreCase(eventName)){
+			itmDesc = "Review Active Directory Accont for "+targetIdentity.getDisplayableName()+" Reactivated with TDI "+onboardedUser+ " if additional security groups required please proceed to Manage User Access in side bar menu.";
+		}else if("TransferEmployee".equalsIgnoreCase(eventName) || "MoveIdentity".equalsIgnoreCase(eventName)){
+			itmDesc = "Review Active Directory Accont for "+targetIdentity.getDisplayableName()+" moved with TDI "+onboardedUser+ " if additional security groups required please proceed to Manage User Access in side bar menu.";
+		}else if(Util.isNullOrEmpty(eventName)){
+			itmDesc = "Review Active Directory Accont for "+targetIdentity.getDisplayableName()+" with TDI "+onboardedUser+ " if additional security groups required please proceed to Manage User Access in side bar menu.";
+		}	
+        logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem ::  Create workitem now with itmDesc "+itmDesc);
+		
+        item.setDescription(itmDesc);
+        
+        //item.setDescription("Review Active Directory Accont and Assign new Security Groups : "+onboardedUser);
+        item.setHandler("sailpoint.api.Workflower");
+
+        Attributes attributes = new Attributes();
+        item.setAttributes(attributes);
+
+        //EXPIRATION Currently set to 1 day of exp
+        Calendar expiration = Calendar.getInstance();
+        item.setExpiration(expiration.getTime());
+        Date startDate = new Date();
+        Date endDate = Util.incrementDateByDays(startDate, 1);
+        item.setAttribute("dueDate", endDate);
+		//NOTIFICATIONS
+        
+        NotificationConfig nc = new NotificationConfig();
+        nc.setEnabled(true);  
+        nc.setRemindersEnabled(true);
+        nc.setStartDate(startDate);
+        nc.setInitialReminderMillisAfterStart(10);
+        List configs = new ArrayList();
+        NotificationConfig.ReminderConfig rc1 = new NotificationConfig.ReminderConfig();
+        rc1.setEmailTemplateName("EmailTemplate-SEN-RefineSecurityGroups");
+        rc1.setEnabled(true);
+        rc1.setMillis(10);
+        rc1.setOnce(true);
+        configs.add(rc1);
+ 
+        nc.setConfigs(configs);
+        nc.assignWakeUpDate(item, startDate);
+        item.setNotificationConfig(nc);
+        
+ 		//END OF notifictions
+
+        ApprovalSet approvalSet = new ApprovalSet();
+
+        ApprovalItem approvalItem = new ApprovalItem();
+        approvalItem.setApplication(APP_AD);
+        approvalItem.setNativeIdentity(targetIdentity.getName());
+        approvalItem.setOperation("Modify");
+        approvalItem.setValue("attribute = \"value\"");
+		//AD OBJECT
+		
+
+
+        approvalSet.add(approvalItem);
+
+        attributes.put("approvalSet", approvalSet);
+        attributes.put("identityDisplayName", targetIdentity.getDisplayableName());
+        attributes.put("identityName", targetIdentity.getName());
+
+        logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem :: Exp time : " + expiration.getTime());
+        item.setExpiration(expiration.getTime());
+
+        context.startTransaction();
+        context.saveObject(item);
+		result = true;
+        context.commitTransaction();
+        logUtil.debug("RulesLibrary-SEN-Utils :: createManageAccessWorkItem :: Exit : " + onboardedUser);
+        return result;
+  	}
+
+				
+
+ 	public Boolean createAccountSelectionWorkItem(String onboardedUser,String reqName){
+        logUtil.debug("RulesLibrary-SEN-Utils :: createAccountSelectionWorkItem ::  Enter " + onboardedUser);
+        Boolean result = false;
+        Calendar expiration = Calendar.getInstance();
+        Identity targetIdentity = context.getObjectByName(Identity.class, onboardedUser);
+        
+        Identity requester = context.getObjectByName(Identity.class, reqName);
+        logUtil.debug("RulesLibrary-SEN-Utils :: createAccountSelectionWorkItem ::  Create workitem now");
+        
+        
+        WorkItem item = new WorkItem();
+        item.setType(WorkItem.Type.ManualAction);
+        //owners should be LAN Administrators
+        item.setOwner(context.getObjectByName(Identity.class, "LAN Administrators"));
+        item.setRequester(requester);
+        
+        Sequencer sequencer = new Sequencer();
+        item.setName(sequencer.generateId(context, item));
+        //item.setRenderer("lcmManualActionsRenderer.xhtml");
+        //item.setRenderer("accountSelectionRenderer.xhtml");
+        item.setRenderer("../accessRequest/accessRequest.xhtml");
+        item.setLevel(WorkItem.Level.Normal);
+        item.setTarget(targetIdentity);
+        item.setTargetClass(Identity.class.getName());
+        item.setDescription("Review Active Directory Accont and Assign new Security Groups : "+onboardedUser);
+        item.setHandler("sailpoint.api.Workflower");
+
+        Attributes attributes = new Attributes();
+        item.setAttributes(attributes);
+
+        //EXPIRATION Currently set to 5 days of exp
+        Calendar expiration = Calendar.getInstance();
+        item.setExpiration(expiration.getTime());
+        Date startDate = new Date();
+        Date endDate = Util.incrementDateByDays(startDate, 1);
+        item.setAttribute("dueDate", endDate);
+
+
+        ApprovalSet approvalSet = new ApprovalSet();
+
+        ApprovalItem approvalItem = new ApprovalItem();
+        approvalItem.setApplication(APP_AD);
+        approvalItem.setNativeIdentity(targetIdentity.getName());
+        approvalItem.setOperation("Modify");
+        approvalItem.setValue("attribute = \"value\"");
+
+        approvalSet.add(approvalItem);
+
+        attributes.put("approvalSet", approvalSet);
+        attributes.put("identityDisplayName", targetIdentity.getDisplayableName());
+        attributes.put("identityName", targetIdentity.getName());
+
+        logUtil.debug("RulesLibrary-SEN-Utils :: createAccountSelectionWorkItem :: Exp time : " + expiration.getTime());
+        item.setExpiration(expiration.getTime());
+
+        context.startTransaction();
+        context.saveObject(item);
+		result = true;
+        context.commitTransaction();
+        logUtil.debug("RulesLibrary-SEN-Utils :: createAccountSelectionWorkItem :: Exit : " + onboardedUser);
+        return result;
+  	}
+
+		/**********************************************************************************************
+			Method Name: saveEvent
+			Parameters:
+			Return: 
+			Description: Save event in Audit logs
+		**********************************************************************************************/
+		
+		public void saveEvent(String message, String identityName){
+		
+			if (Auditor.isEnabled("PeopleSoftICD")){        
+				AuditEvent event = new AuditEvent();               
+				event.setSource("LCM");
+				event.setTarget(identityName);
+				event.setAction("Post Back");		
+				event.setString1(message);
+		
+				Auditor.log(event);
+			}
+		}
+		
+		/**********************************************************************************************
+			Method Name: saveEvent
+			Parameters:
+			Return: 
+			Description: Save event in Audit logs
+		**********************************************************************************************/
+		
+		public void saveEvent(String message, String identityName){
+		
+			if (Auditor.isEnabled("PeopleSoftICD")){        
+				AuditEvent event = new AuditEvent();               
+				event.setSource("LCM");
+				event.setTarget(identityName);
+				event.setAction("Post Back");		
+				event.setString1(message);
+		
+				Auditor.log(event);
+			}
+		}
+		
+
+		public static void lauchCertificationForNewHire(SailPointContext context, Identity identity, String launcher, Identity certifier) throws Exception{
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Enter");
+    	  	   
+    	  	    String r = launcher;
+    	  	    String identityName = identity.getName();
+    	  	    
+    	  	    List <String>identities = new ArrayList<String>();
+    	  	    identities.add(identity.getName());
+    	  	    
+    	  	    if (r == null || r.equalsIgnoreCase("Scheduler") || r.equalsIgnoreCase("RequestHandler")){
+    	  	      r = "spadmin";
+    	  	    }
+    	  	   
+    	  	    Identity requestor = context.getObject(Identity.class, r);
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Change requested by " + requestor.getName());
+    	  	   
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Add identity to list");
+    	  	    
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Set the cert group owner");
+    	  	    Identity certGroupOwner = context.getObjectByName(Identity.class, "spadmin");
+
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Create scheduler schedule set to run now");
+    	  	    
+    	  	    CertificationScheduler scheduler = new CertificationScheduler(context);
+    	  	    //CertificationSchedule scheduler = new CertificationSchedule();
+    	  	    
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Configure cert def");
+    	  	    
+    	  	    String certificationDefinitionTemplateName="Review Default AD Security Groups";
+    	  	    //Review Default AD Security Groups this should be Manager Cert Object
+    	  	    
+    	  		/*
+    	  		*Geting the existing template for review and cloning it.
+    	  		*/
+    	  		CertificationDefinition templateCert = context.getObjectByName(CertificationDefinition.class, certificationDefinitionTemplateName);
+    	  		CertificationDefinition definition = (CertificationDefinition) templateCert.derive(context);
+    	  	   
+    	  	    String certName = "Review Default AD Security Group for " + identityName + " - " + identity.getDisplayName();
+    	  	   
+    	  	    //Approve and complete inflight certifications for this user before launching new cert
+    	  	    approveCert(context, identityName, "Review Default AD Security Group for " + identityName + " - ");
+    	  	 
+    	  	    List <String> certifiers = new ArrayList<String>();
+    	  	    if(null == certifier)
+    	  	    {
+    	  	    	certifier = context.getObjectByName(Identity.class, "LAN Administrators");
+    	  	    }
+    	  	    //Check for manager status
+
+    	  	    String certifierName = certifier.getName();
+    	  	    String certifierDisplayName = certifier.getDisplayName();
+    	  	   
+    	  	    certifiers.add(certifierName);
+    	  	    definition.setNameTemplate(certName + ": assigned to " + certifierDisplayName);
+    	  	    definition.setShortNameTemplate(certName);
+    	  	    definition.setName(certName + " [" + new Date().toString() + "]");
+    	  	    definition.setIdentitiesToCertify(identities);
+
+    	  	    //Set the certifierDisplayName
+    	  	    definition.setCertifierName(certifierDisplayName);
+    	  	    definition.setOwnerIds(certifiers);
+    	  	    definition.setCertificationOwner(certGroupOwner);
+    	  	    definition.setCertificationNameTemplate(certName);
+
+    	  	   
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Schedule task to run, passing in schedule (which has certficiaton defintion attached)");
+    	  	    CertificationSchedule certSchedule =new CertificationSchedule(context, requestor, definition);
+    	  		certSchedule.setRunNow(true);
+    	  		TaskSchedule taskSchedule = scheduler.saveSchedule(certSchedule, false);
+    	  	   
+    	  	    logUtil.debug("RulesLibrary-SEN-Utils :: lauchCertificationForNewHire :: Exit");
+     	}
+
+
+
+		static void approveCert(SailPointContext context, String identityName, String certNameFilterStartsWith) throws GeneralException
+    	{
+    	  	logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: Enter ");
+    	  	
+			logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: Enter approveCert");		
+    	    
+    	    QueryOptions certQO = new QueryOptions();
+    	    Filter certNameFilter = Filter.like("name", certNameFilterStartsWith, MatchMode.START);	
+    	    certQO.add(certNameFilter);
+            
+            //Iterator iterCertDefs = context.search(Certification.class, certQO, "name");
+    	    Iterator iterCertDefs = context.search(Certification.class, certQO, "id");
+    		
+    		List certIds = new ArrayList();
+    		if (null != iterCertDefs){
+    			while (iterCertDefs.hasNext()){
+    				String certId = (String)((Object [])iterCertDefs.next())[0];
+    				logger.debug("certId="+certId);
+    				certIds.add(certId);
+    			}
+    			logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: List before sort :" + certIds);
+    			// Sort in ascending order.
+    			Collections.sort(certIds);
+    			logUtil.debug("List after sort :" + certIds);
+    			//if (certIds.size() > 1)
+    			//	certIds.remove(certIds.size() - 1);
+    			//logUtil.debug("List after removing the latest one:" + certIds);
+    		}
+    		if (null != certIds && !certIds.isEmpty()){
+    			Iterator iterCertIds = certIds.iterator();
+            	
+            	if(null != iterCertIds){
+    		    while(iterCertIds.hasNext()){
+    		    	String certId = (String) iterCertIds.next();
+					logUtil.debug("RulesLibrary-SEN-Utils :: approveCert ::  certId="+certId);	
+					Certification certification = (Certification) context.getObjectById(Certification.class,certId);
+    				logUtil.debug("certification="+certification.getName());
+    				if (certification.getExpiration().before(new Date())){
+    					logger.debug("RulesLibrary-SEN-Utils :: approveCert ::  An attempt was made to modify an expired certification. Hence this is rejected. \n");
+    					return;
+    				}
+    		    				
+    		         List<CertificationGroup> certificationGroups = certification.getCertificationGroups();
+    		         if (null != certificationGroups && !certificationGroups.isEmpty()) {
+    		            boolean hasActiveCertGroup = false;
+    		            String certificationGroupId = null;
+    		            String certificationGroupName = null;
+    		            for (CertificationGroup certificationGroup : certificationGroups) {
+    		               certificationGroupId = certificationGroup.getId();
+    		               certificationGroupName = certificationGroup.getName();
+    		               if (certificationGroup.getStatus().equals(
+    		                     CertificationGroup.Status.Active)) {
+    		                  hasActiveCertGroup = true;
+    		                  context.decache(certificationGroup);
+    		                  break;
+    		               }
+    		            }//end for
+    		            if (hasActiveCertGroup) {
+    		            	CertificationDefinition certificationDefinition = certification.getCertificationDefinition(context);
+    		            	 if (null != certificationDefinition) {
+    		                     boolean certDefChanged = false;
+    		                     if (!certificationDefinition.isAutomaticClosingEnabled()) {
+    		                        certificationDefinition.setAutomaticClosingEnabled(true);
+    		                        certificationDefinition.setAutomaticClosingComments("Closing the inflight certification as there is a new certification being launched");
+    		                        certificationDefinition.setAutomaticClosingSignerName("spadmin");
+    		                        certDefChanged = true;
+    		                     }
+    		                     // Do a separate check of the closing action, just in case
+    		                     // there are any that were previously set up to reject
+    		                     CertificationAction.Status closingAction = certificationDefinition.getAutomaticClosingAction();
+    		                     if (!CertificationAction.Status.Approved.equals(closingAction)) {
+    		                        certificationDefinition.setAutomaticClosingAction(CertificationAction.Status.Approved);
+    		                        certDefChanged = true;
+    		                     }
+    		                     if (certDefChanged) {
+    		                        context.saveObject(certificationDefinition);
+    		                        context.commitTransaction();
+    		                     }
+    		                     context.decache(certificationDefinition);    		                    
+    		                  }
+    		            	List <WorkItem> workItems = certification.getWorkItems();
+    	    				if(null != workItems && !workItems.isEmpty()){
+    	    					for(WorkItem workItem:workItems){
+    	    						logger.debug("RulesLibrary-SEN-Utils :: approveCert ::  workItem ="+workItem.getName());    	    						
+    	    						workItem.setCompletionComments("Closing the inflight certification as there is a new certification being launched");
+    	    						workItem.setState(State.Finished);
+    	    					}//end for
+    	    				}
+    	    		
+    	    				//Now iterate over each of the objects inside this certification and apply decisions
+    	    				List certificationEntities = certification.getEntities();
+    	    				List certificationItems;
+    	    				CertificationItem certificationItem;
+    	    				CertificationEntity certificationEntity;
+    	    				for (int i=0; i<certificationEntities.size(); i++){
+    	    					certificationEntity = (CertificationEntity)certificationEntities.get(i);
+    	    					certificationItems = certificationEntity.getItems();
+    	    					for (int j=0; j<certificationItems.size(); j++){
+    	    						certificationItem = (CertificationItem)certificationItems.get(j);
+    	    						logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: certificationItem="+certificationItem.getName());
+    	    						checkCertificationAction(certification,certificationItem);
+    	    						Identity identity = context.getObjectByName(Identity.class,certificationEntity.getTargetName());
+    	    						certificationItem.approve(context,identity, null, "Closing the inflight certification as there is a new certification being launched");
+    	    						saveCertificationObjects(context,certification,certificationItem);							
+    	    					}//end for
+    	    				}//end for
+    	    				logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: Exiting approveCert");
+    		            }
+    		          }    				
+    		    	}
+            	}//end while
+	    	}
+	    	logUtil.debug("RulesLibrary-SEN-Utils :: approveCert :: Exit ");
+	    	
+    	}
+]]>	</Source>
+</Rule>
+</sailpoint>

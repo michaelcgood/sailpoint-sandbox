@@ -1,0 +1,334 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="RulesLibrary-SEN-CONF-CreatePersona">
+  <ReferencedRules>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Utils"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Identity"/>
+    <!-- FM SP -->
+    <Reference class="sailpoint.object.Rule" name="SP Provisioning Rules Library"/>
+    <Reference class="sailpoint.object.Rule" name="SP Role Assigment Rule Library"/>
+    <Reference class="sailpoint.object.Rule" name="SP Attr Synch Rules Library"/>
+  </ReferencedRules>
+  <Source>
+  <![CDATA[
+	
+	import sailpoint.api.SailPointFactory;
+	import sailpoint.api.SailPointContext;
+	import sailpoint.api.Provisioner;
+	import sailpoint.object.*;
+	import sailpoint.object.ProvisioningPlan.AttributeRequest;
+	import sailpoint.object.ProvisioningPlan.AccountRequest;
+    import sailpoint.object.ProvisioningPlan.Operation; 
+	import sailpoint.tools.Util;
+    import sailpoint.tools.Message;
+    import sailpoint.tools.GeneralException;
+    import java.sql.Connection;
+	import java.sql.PreparedStatement;
+	import java.sql.ResultSet;
+	import java.sql.SQLException;
+	import java.sql.DriverManager;
+    import java.sql.Timestamp;
+	import java.util.*;
+	import java.text.*;
+	import javax.naming.Context;
+	import javax.naming.InitialContext;
+	import javax.sql.DataSource;
+	import sailpoint.api.PasswordGenerator;
+	
+	
+    import org.apache.commons.logging.Log;
+	import org.apache.commons.logging.LogFactory;
+
+	private static Log mlogger = LogFactory.getLog("org.rulelibraries");
+	
+	/******************************************************************************
+		TODO:  FILL IN FOLLOWING MOVER METHODS
+	******************************************************************************/
+	/*
+		In all rules that receive the workflow param, any workflow variable is accessible by doing workflow.get, such as:
+		
+			String identityName = workflow.get("identityName");
+	*/
+	
+	public static boolean isMoverCustomTriggerRule(SailPointContext context, Identity previousIdentity, Identity newIdentity){
+		boolean flag = false;
+		
+		return flag;
+	}
+	
+	public static ProvisioningPlan buildCustomMoverPlan(SailPointContext context, Workflow workflow){
+		//  append to the plan
+		ProvisioningPlan plan = workflow.get("plan");
+		if (plan == null){
+			plan = new ProvisioningPlan();
+		}
+		
+		// add logic to buid out rest of plan
+		return plan;
+	}
+	
+	/* Return the request Type */
+	public static String getMoverRequestTypeRule(SailPointContext context, Workflow workflow){
+		
+		String eventName=workflow.get("eventName");
+		
+		String requestType = "";
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The requestType is"+requestType);
+		
+		return requestType;
+	}
+	
+	/* Return prov success email */
+	public static String getMoverProvSuccessEmailTemplateRule(SailPointContext context, Workflow workflow){
+		
+		String val = "";
+		
+		String eventName=workflow.get("eventName");
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The eventName is"+eventName);
+		
+		if (STR_CREATE_IDENTITY.equalsIgnoreCase(eventName)) 
+		{
+		 val ="EmailTemplate-Create-Identity-Success";
+		}
+		else if (STR_UPDATE_IDENTITY.equalsIgnoreCase(eventName))
+		{
+		val ="EmailTemplate-Update-Identity-Success";
+		}
+		
+		return val;
+	}
+	
+	/* Return prov failure email */
+	public static String getMoverProvFailureEmailTemplateRule(SailPointContext context, Workflow workflow){
+		String val = "";
+		
+		String eventName=workflow.get("eventName");
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The eventName is"+eventName);
+		
+		if (STR_CREATE_IDENTITY.equalsIgnoreCase(eventName)) 
+		{
+		 val ="EmailTemplate-Create-Identity-Failure";
+		}
+		else if (STR_UPDATE_IDENTITY.equalsIgnoreCase(eventName))
+		{
+		val ="EmailTemplate-Update-Identity-Failure";
+		}
+		
+		return val;
+	}
+	
+	/* Return approved email */
+	public static String getMoverApprovedEmailTemplateRule(SailPointContext context, Workflow workflow){
+		String val = "Mover Approved Email Template";
+		
+		return val;
+	}
+	
+	/* Return rejected email */
+	public static String getMoverRejectedEmailTemplateRule(SailPointContext context, Workflow workflow){
+		String val = "Mover Rejected Email Template";
+		
+		return val;
+	}
+	
+	/* Return prov success email to */
+	public static String getMoverProvSuccessEmailToRule(SailPointContext context, Workflow workflow){
+		Identity identity = context.getObject(Identity.class, workflow.get("identityName"));
+		String val = identity.getEmail();
+		
+		
+		return val;
+	}
+	
+	/* Return prov failure email to */
+	
+	public static String getMoverProvFailureEmailToRule(SailPointContext context, Workflow workflow)
+	{
+		Identity identity = context.getObject(Identity.class, workflow.get("identityName"));
+		
+		String val = identity.getEmail();
+		
+		String eventName=workflow.get("eventName");
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The eventName is"+eventName);
+		
+		String launcher=workflow.get("launcher");
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The launcher is"+launcher);
+		
+		Identity launcherIdentity = context.getObject(Identity.class,launcher);
+		
+		String launcherEmail="";  
+		
+		if(launcherIdentity!=null)
+		launcherEmail=launcherIdentity.getEmail();
+		else
+		launcherEmail=STR_IDM_MAILBOX;
+		
+		context.decache(identity);
+		identity = null;
+		
+		val =launcherEmail;
+		
+		return val;
+	}
+	
+	/* Return approved email to */
+	public static String getMoverApprovedEmailToRule(SailPointContext context, Workflow workflow){
+		Identity identity = context.getObject(Identity.class, workflow.get("identityName"));
+		String val = identity.getEmail();
+		
+		context.decache(identity);
+		identity = null;
+		
+		return val;
+	}
+	
+	/* Return rejected email to */
+	public static String getMoverRejectedEmailToRule(SailPointContext context, Workflow workflow){
+		String val = "somedefaultaddress@sailpoint.com";
+		
+		return val;
+	}
+	
+	/* Do any updates to workflow variables before ProvisioningPlan is compiled */
+	public static void moverBeforePlanRule(SailPointContext context, Workflow workflow){
+		mlogger.trace("Enter Mover beforePlanRule");
+		
+		mlogger.trace("Getting extension attributes that can be used for customizations");
+		Attributes identityModel = initWorkflowAttributesVar(workflow, "identityModel");
+		Attributes spExtAttrs = initWorkflowAttributesVar(workflow, "spExtAttrs");
+		
+		//TODO:  CAN PUT LOGIC HERE TO INITIALIZE VALUES
+		
+		workflow.put("identityModel", identityModel);
+		workflow.put("spExtAttrs", spExtAttrs);
+		
+		mlogger.trace("Exit Mover beforePlanRule");
+	}
+	
+	/* Do any updates to workflow variables before ProvisioningProject is provisioned */
+	public static void moverBeforeProvisionRule(SailPointContext context, Workflow workflow){
+		mlogger.trace("Enter Mover beforeProvisionRule");
+		
+		mlogger.trace("Exit Mover beforeProvisionRule");
+	}
+	
+	/* Do any updates to workflow variables after ProvisioningProject is provisioned */
+	public static void moverAfterProvisionRule(SailPointContext context, Workflow workflow){
+		mlogger.trace("Enter Create afterProvisionRule");
+		
+		String status="";
+		String identityName=workflow.get("identityName");
+
+		
+		Identity identity = context.getObject(Identity.class, workflow.get("identityName"));
+		
+		String strStatus=returnBlank(workflow.get("provStatus"));
+		
+		String eventName=workflow.get("eventName");
+		String changeDepartment=workflow.get("changeDepartment");
+		String nameChange=workflow.get("nameChange");
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The eventName is"+eventName);
+		if(mlogger.isDebugEnabled()) mlogger.debug("The provison Status is"+strStatus);
+		
+		String actionStatus="";
+		String casename="";
+		int intervalMillSecond=0;
+		String sourceEvent="";
+
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("The identityName is: "+identityName);	
+		if(mlogger.isDebugEnabled()) mlogger.debug("The strActionStatus is:"+actionStatus);	
+		
+		if(STR_SUCCESS.equalsIgnoreCase(strStatus)) // Executing transaction in case of Success
+		{
+		
+		intervalMillSecond=INT_DEF_WKF_INTEVAL;
+		
+		if (STR_CREATE_IDENTITY.equalsIgnoreCase(eventName))
+		{
+		 actionStatus=STR_JOINER_ACTION_STATUS;
+		 casename="Joiner LifeCycle Event for "+identityName;
+		 
+		 if(mlogger.isDebugEnabled()) mlogger.debug("Starting the workflow for Joiner workflow: "+String.valueOf(intervalMillSecond));
+
+		 sourceEvent="create";
+	 
+		 startWorkFlow(context,STR_REQUESTOR_IDENTITY,STR_WKFL_NAME,casename,identityName,actionStatus,intervalMillSecond); // start Joiner workflow
+		}
+		
+		if (STR_UPDATE_IDENTITY.equalsIgnoreCase(eventName))
+		{
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("Starting the workflow for Change Branch & Name Change workflow");
+
+		sourceEvent="modify";
+		
+		
+		if("true".equalsIgnoreCase(nameChange))
+		{
+		 actionStatus=STR_NAME_CHANGE_ACTION_STATUS;
+		 casename="Name Change Event for "+identityName;
+		  
+		 if(mlogger.isDebugEnabled()) mlogger.debug("Starting the workflow for Name Change workflow: "+String.valueOf(intervalMillSecond));
+		 
+		 startWorkFlow(context,STR_REQUESTOR_IDENTITY,STR_WKFL_NAME,casename,identityName,actionStatus,intervalMillSecond); // start Name Change workflow
+		 
+		 intervalMillSecond=INT_DEF_WKF_DELAYED_INTERVAL; // Update intervaleMillisecond to delayed as we don't want Name change and Change branch workflow to start together
+		
+		}
+		
+		
+		if("true".equalsIgnoreCase(changeDepartment))
+		{
+		
+		 actionStatus=STR_CHG_BRANCH_ACTION_STATUS;
+		 String casename="Change Branch Event for "+identityName;
+		 
+		 if(mlogger.isDebugEnabled()) mlogger.debug("Starting the workflow for Change Branch workflow with time: "+String.valueOf(intervalMillSecond));
+		 
+		 startWorkFlow(context,STR_REQUESTOR_IDENTITY,STR_WKFL_NAME,casename,identityName,actionStatus,intervalMillSecond); // Start Change branch workflow
+		}
+		
+		} // End for Update Identity 
+
+		sendJMSMessageUsingCachingFactory(identity,sourceEvent,changedAttrJMSMap); // Calling JMS Message 
+		
+		} // Update only in case of success.
+		
+		
+		mlogger.trace("Exit Create afterProvisionRule");
+	}
+	
+	/* Do any updates to workflow variables after ProvisioningProject is provisioned */
+	public static void setProvisionStatus(SailPointContext context, Workflow workflow){
+		if(mlogger.isDebugEnabled()) mlogger.debug("Enter Create setProvisionStatus");
+		
+		String status="";
+		
+		ArrayList provList = getErrors(context,workflow);
+		
+		if(provList.size()<1)
+			status=STR_SUCCESS;
+		else
+			status=STR_FAILURE;
+		
+		workflow.put("provStatus",status);
+		workflow.put("provErrorLst",provList);
+		
+		if(mlogger.isDebugEnabled()) mlogger.debug("Exit Create setProvisionStatus");
+	}
+	
+	/* Do any updates to workflow variables if there was no request to process */
+	public static void moverNoRequestRule(SailPointContext context, Workflow workflow){
+		
+	}
+
+	
+	]]></Source>
+</Rule>

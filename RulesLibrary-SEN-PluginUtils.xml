@@ -1,0 +1,1231 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE sailpoint PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<sailpoint>
+<Rule language="beanshell" name="RulesLibrary-SEN-PluginUtils">
+	<ReferencedRules>
+	    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Departments"/>
+    </ReferencedRules>
+  <Source>
+<![CDATA[
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import openconnector.ConnectorException;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import sailpoint.api.IdentityService;
+import sailpoint.api.SailPointContext;
+import sailpoint.api.SailPointFactory;
+import sailpoint.object.Application;
+import sailpoint.object.Filter;
+import sailpoint.object.Identity;
+import sailpoint.object.Bundle;
+import sailpoint.object.Link;
+import sailpoint.object.Attributes;
+import sailpoint.object.QueryOptions;
+import sailpoint.server.InternalContext;
+
+import sailpoint.tools.GeneralException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import sailpoint.tools.Util;
+import sailpoint.object.AuditEvent;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.tools.GeneralException;
+import sailpoint.object.Custom;
+import sailpoint.object.ProvisioningPlan.Operation;
+import sailpoint.object.ProvisioningProject;
+import sailpoint.object.Rule;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.FileReader;
+import org.apache.commons.io.FileUtils;
+import sailpoint.plugin.cubephotoplugin.tools.SizeInputStream;
+import sailpoint.plugin.cubephotoplugin.services.PhotoService;
+import sailpoint.plugin.cubephotoplugin.rest.PhotoResource;
+import sailpoint.plugin.PluginContext;
+import sailpoint.object.WorkflowCase;
+
+import java.util.Date;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.sql.SQLException;
+import java.sql.ResultSet;
+import java.sql.Types;
+import java.util.List;
+import sailpoint.api.SailPointContext;
+import sailpoint.connector.JDBCConnector;
+import sailpoint.object.Application;
+import sailpoint.object.ProvisioningPlan;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.object.ProvisioningPlan.AttributeRequest;
+import sailpoint.object.ProvisioningPlan.PermissionRequest;
+import sailpoint.object.ProvisioningResult;
+import sailpoint.object.Schema;
+import sailpoint.tools.xml.XMLObjectFactory;
+import org.apache.commons.logging.LogFactory;
+import org.apache.commons.logging.Log;
+import sailpoint.tools.Util;
+import java.sql.Timestamp;
+import java.util.UUID;
+import sailpoint.tools.JdbcUtil;
+import java.util.Random;
+import sailpoint.object.WorkItem;
+import sailpoint.object.WorkflowCase;
+import sailpoint.server.Auditor;
+
+private static Log rlogger = LogFactory.getLog("org.rulelibraries");
+
+public boolean saveImageToPluginDb(String photoPath, String identityID, String identityName, String requestorName){
+
+	boolean result = false;
+	
+	rlogger.info("RulesLibrary-SEN-PluginUtils :: Inside saveImageToPluginDb");
+	sailpoint.plugin.cubephotoplugin.services.PhotoService photoService = new sailpoint.plugin.cubephotoplugin.services.PhotoService();
+	rlogger.info("RulesLibrary-SEN-PluginUtils :: photoService :: "+photoService);
+
+	try{
+		// Get the WorkFlow case from IIQ
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: Get the WorkFlow case from IIQ");
+		
+		// Fetch the Photo parameters and set input Stream
+		InputStream photoIs2 = new FileInputStream(photoPath);
+
+		if(null != identityID){
+
+	    	rlogger.info("RulesLibrary-SEN-PluginUtils :: photoIs2 is InputStream");
+			photoService.saveImage(null,photoIs2,identityID,identityName,requestorName,context);
+		    
+			photoIs2.close();
+			rlogger.info("RulesLibrary-SEN-PluginUtils :: PhotoResource :: Saved Photo for Identity "+identityID);
+			result = true;
+		}
+	}catch(Exception fe){
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: PhotoResource :: Exception "+fe.getMessage());
+	}
+	return result;
+}
+
+public boolean populateUserIDs(String identityId, String identityName){
+
+	boolean result = false;
+
+	rlogger.info("RulesLibrary-SEN-PluginUtils :: Inside populateUserIDs");
+	try{
+		sailpoint.plugin.cubephotoplugin.services.PhotoService photoService = new sailpoint.plugin.cubephotoplugin.services.PhotoService();
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: populateUserIDs :: photoService - "+photoService);
+
+		// Populate the IDs for the user identities in photo DB
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: Populate the IDs for the user identities in photo DB");
+
+		photoService.populateUserIDsService(identityId, identityName);
+		result = true;
+	}catch(Exception fe){
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: populateUserIDs:PhotoResource :: Exception "+fe.getMessage());
+	}
+	return result;
+}
+
+public boolean saveImageToPluginDbByName(String photoPath, String identityName, String requestorName){
+
+	boolean result = false;
+	
+	rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: Inside saveImageToPluginDb");
+	sailpoint.plugin.cubephotoplugin.services.PhotoService photoService = new sailpoint.plugin.cubephotoplugin.services.PhotoService();
+	rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName ::  photoService :: "+photoService);
+	
+	String identityId = null;
+	
+	if(null !=identityName){
+		Identity idObj = context.getObjectByName(Identity.class,identityName);
+		identityId = idObj.getId();
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName ::  photoService :: identityId "+identityId);
+	}
+	
+	try{
+		// Get the WorkFlow case from IIQ
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: Get the WorkFlow case from IIQ");
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: photoPath "+photoPath);
+		
+		// Fetch the Photo parameters and set input Stream
+		InputStream photoIs2 = new FileInputStream(photoPath);
+
+		if(null != identityId){
+	    	rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: photoIs2 is InputStream");
+			photoService.saveImage(null,photoIs2,identityId,identityName,requestorName,context);
+		    
+			photoIs2.close();
+			rlogger.debug("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: PhotoResource :: Saved Photo for Identity "+identityID);
+			result = true;
+		}
+	}catch(Exception fe){
+		rlogger.info("RulesLibrary-SEN-PluginUtils :: saveImageToPluginDbByName :: PhotoResource :: Exception "+fe.getMessage());
+	}
+	return result;
+}
+
+
+//10292019 Kremena New Rule
+//Author Abhishek 
+public String createIDSystemRecord(Identity requestor, Identity cube, HashMap workflowParams) {
+
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: START");
+
+	// Initialize the variables to hold query parameters
+	String Id = "";
+	String RequestID = "";
+	int SPIN = 0;
+	int RequestType = 0;
+	int RequestStatus = 0;
+	String LastName = "";
+	String FirstName = "";
+	String Middle = "";
+	String Suffix = "";
+	String PreferredFirstName = "";
+	int HasAllHoursAccess = 0;
+	Timestamp IssueDate;
+	Timestamp ExpireDate;
+	Timestamp LastUpdated;	
+	String Contractor_CO = "";
+	InputStream Image = null;
+	String DeptID = "";
+	String Notes = "";
+	String PersonStatus = "";
+	String ClientName = "";
+	String IDSystem_AppName = "";
+	String SailPointUserLastName = "";
+	String SailPointUserFirstName = "";
+	String SailPointUserMiddleName = "";
+	String RequestUuid = "";
+	int IsSmartCard = 0;
+	int IsTravelingToDC = 0;
+	String NonorgStaffType = "";
+	String OrganizationName = "";
+	Timestamp DOB;
+	InputStream IdentityDocument = null;
+	String SailPointUserEmailAddress = "";
+	String SailpointIdentityName = "";
+	HashMap userPhoto = new HashMap();
+	HashMap userDocument = new HashMap();
+	String photoPath = "";
+	String documentPath = "";
+
+	rlogger.debug("Inside rules library - createIDSystemRecord method");
+
+	SimpleDateFormat iiqDateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS");
+	
+	//TODO SRINI TO CHECK THE DATE FORMATS ACROSS THE BOARD
+	//eg 8/22/2019 10:24:57 AM EDT
+	SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd/yyyy hh:mm:ss aaa z");	
+    SimpleDateFormat dobDateFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy", Locale.ENGLISH);
+
+	SimpleDateFormat sdf = new SimpleDateFormat("E MMM dd HH:mm:ss Z yyyy");
+
+	RequestType = 0;
+	RequestStatus = 1;
+	LastUpdated = new Timestamp(System.currentTimeMillis());
+	IsSmartCard = 0;
+	IsTravelingToDC = 0;
+
+	ClientName = workflowParams.get("ClientName");
+	IDSystem_AppName = workflowParams.get("IDSystem_AppName");
+	
+	SailPointUserLastName = requestor.getLastname();
+	SailPointUserFirstName = requestor.getFirstname(); 
+	SailPointUserEmailAddress = requestor.getEmail();
+	if(null != requestor.getAttribute("middleName")) {
+		SailPointUserMiddleName = requestor.getAttribute("middleName").toString();
+	}	
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: workflowParams = "+workflowParams);
+
+	userPhoto = workflowParams.get("userPhotoMap");
+	if(null != userPhoto) {
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: userPhoto "+userPhoto);
+		photoPath = userPhoto.get("file");
+	    Image = new BufferedInputStream(new FileInputStream(photoPath));
+	}
+
+    RequestID = workflowParams.get("RequestID");
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: RequestID from WF is "+RequestID);
+
+	userDocument = workflowParams.get("userDocumentMap");
+	if(null != userDocument) {
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - userDocument = "+userDocument);
+		documentPath = userDocument.get("file");
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - documentPath = "+documentPath);
+		//IdentityDocument = new BufferedInputStream(new FileInputStream(documentPath));
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - IdentityDocument is valid ");
+	}
+
+	Id = RequestID+ClientName;
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - Id is valid "+Id);
+	
+	if(null != cube.getAttribute("spin")) {
+		SPIN = Integer.valueOf(cube.getAttribute("spin").toString());
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - SPIN is valid "+SPIN);
+	}
+	
+	LastName = cube.getLastname();
+	FirstName = cube.getFirstname();
+
+	if(null != cube.getAttribute("middleName")) {
+		Middle = cube.getAttribute("middleName").toString();
+	}
+
+	if(null != cube.getAttribute("extended4")) {
+		Suffix = cube.getAttribute("extended4").toString();
+	}
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - FirstName is valid "+FirstName);
+
+	if(null != cube.getAttribute("preferredFirstname")) {
+		PreferredFirstName = cube.getAttribute("preferredFirstname").toString();
+	}
+
+	if(null != cube.getAttribute("startDate")) {
+    	Date parsedStartDate = sdf.parse(cube.getAttribute("startDate").toString());
+    	IssueDate = new java.sql.Timestamp(parsedStartDate.getTime());
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - IssueDate is valid "+IssueDate);
+    }
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - parsedStartDate is valid "+parsedStartDate);
+
+	if(null != cube.getAttribute("endDate")) {
+		Date parsedEndDate = sdf.parse(cube.getAttribute("endDate").toString());
+    	ExpireDate = new java.sql.Timestamp(parsedEndDate.getTime());
+    }
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - ExpireDate is valid "+ExpireDate);
+
+	if(null != cube.getAttribute("contractorCo")) {
+		Contractor_CO = cube.getAttribute("contractorCo").toString();
+	}
+
+	if(null != cube.getAttribute("deptNumber")) {
+		DeptID = cube.getAttribute("deptNumber").toString();
+	}
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - DeptID is valid "+DeptID);
+
+	if(null != cube.getAttribute("accessHours")) {
+		if("All Hours".equalsIgnoreCase(cube.getAttribute("accessHours").toString())) {
+			HasAllHoursAccess = 1;
+		}else{
+			HasAllHoursAccess = 0;
+		}
+	}
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - HasAllHoursAccess is valid "+HasAllHoursAccess);
+
+	Notes = workflowParams.get("Notes");
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - Notes is valid "+Notes);
+	
+	if(null != cube.getAttribute("personaStatus")) {
+		PersonStatus = cube.getAttribute("personaStatus").toString();
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - PersonStatus is valid "+PersonStatus);
+	}
+
+	if(null != PersonStatus && !"".equalsIgnoreCase(PersonStatus) && ("Detailee".equalsIgnoreCase(PersonStatus) || "Intern".equalsIgnoreCase(PersonStatus) || "Contractor".equalsIgnoreCase(PersonStatus))) {
+		NonorgStaffType = PersonStatus;
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - NonorgStaffType is valid "+NonorgStaffType);
+	}
+
+//	RequestUuid = UUID.nameUUIDFromBytes(RequestID.getBytes()).toString();
+//	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - RequestUuid is valid "+RequestUuid);
+
+	//10292019 extended3 for  Liasion Org
+	if(null != cube.getAttribute("extended3")) {
+		OrganizationName = cube.getAttribute("extended3").toString();
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - OrganizationName is valid "+OrganizationName);
+	}
+
+	if(null != cube.getAttribute("dob")) {
+		Date dateOfBirth = dobDateFormat.parse(cube.getAttribute("dob").toString());
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: dateOfBirth "+dateOfBirth);
+    	DOB = new java.sql.Timestamp(dateOfBirth.getTime());
+  		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - DOB is valid "+DOB);
+    }
+
+	// Null/Empty check for the mandatory attributes. Else return failure.
+   	if(RequestID==null || RequestID.isEmpty() || RequestType==null || RequestStatus==null || 
+    LastName==null || LastName.isEmpty() || FirstName==null || FirstName.isEmpty() ||
+    HasAllHoursAccess==null || IssueDate==null || ExpireDate==null || LastUpdated==null ||
+    DeptID==null || DeptID.isEmpty() || PersonStatus==null || PersonStatus.isEmpty() || RequestUuid.isEmpty() ||
+    SailPointUserEmailAddress==null || SailPointUserEmailAddress.isEmpty())
+	{
+  		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: SOME OF THE USER DATA FIELDS ARE NULL "+DOB);
+   	 	//throw new GeneralException("Invalid or incomplete user data found");
+	}
+
+	// Prepare the Insert sqlQuery
+	String sqlQuery = "insert into SailpointBadgeReq ";
+
+	String columns = "(IIQRequestID,SPIN,RequestType,RequestStatus,LastName,FirstName,Middle," +
+	"Suffix,PreferredFirstName,HasAllHoursAccess,IssueDate,ExpireDate,LastUpdated," +
+	"Contractor_CO,Image,DeptID,Notes,PersonStatus," +
+	"SailPointUserLastName,SailPointUserFirstName,SailPointUserMiddleName," +
+	"IsSmartCard,NonorgStaffType,OrganizationName," +
+	"DOB,IdentityDocument,SailPointUserEmailAddress) ";
+
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - columns is valid "+columns);
+
+	// String to be casted as varBinary(Max) for blob attributes
+	String values = "VALUES (?,?,?,?,?,?,?,?,?,?," +
+					 "?,?,?,?,?,?,CAST(? AS VARBINARY(MAX))," +
+					 "?,?,?,?,?,?," +
+					 "?,?,CAST(? AS VARBINARY(MAX)),?)";
+
+	sqlQuery = sqlQuery + columns + values;
+
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Get document details - sqlQuery is valid "+sqlQuery);
+
+	Application application = context.getObjectByName(Application.class, IDSystem_AppName);
+
+	String dbUrl = application.getAttributeValue("url").toString();
+	String dbUser = application.getAttributeValue("user").toString();
+	String dbPass = context.decrypt(application.getAttributeValue("password").toString());
+	String driverClass = application.getAttributeValue("driverClass").toString();
+
+   	if(dbUrl==null || dbUrl.isEmpty() || dbUser==null || dbUser.isEmpty() || dbPass==null || dbPass.isEmpty() || driverClass==null || driverClass.isEmpty())
+	{
+   		throw new GeneralException("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Invalid DB connection details");
+	}
+
+   	HashMap connectionMap = new HashMap();
+   	connectionMap.put(JdbcUtil.ARG_DRIVER_CLASS, driverClass);
+   	connectionMap.put(JdbcUtil.ARG_URL, dbUrl);
+   	connectionMap.put(JdbcUtil.ARG_USER, dbUser);
+   	connectionMap.put(JdbcUtil.ARG_PASSWORD, dbPass);
+
+   	Connection connection = null;
+    PreparedStatement statement = null;
+
+   	try
+   	{
+   		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Trying to get connection to database");  
+   		connection = JdbcUtil.getConnection(connectionMap);
+
+   		rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Prepare the SQL query");  
+		statement = connection.prepareStatement(sqlQuery);
+	
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: RequestID " + RequestID);
+		
+		statement.setString(1, RequestID);
+		statement.setInt(2, SPIN);
+		statement.setInt(3, RequestType);
+		statement.setInt(4, RequestStatus);
+		
+		if(LastName != null){
+			statement.setString(5, LastName.toUpperCase());
+		}
+		else{
+			statement.setString(5, "");
+		}
+		
+		if(FirstName != null){
+			statement.setString(6, FirstName.toUpperCase());
+		}
+		else{
+			statement.setString(6, "");
+		}
+		
+		if(Middle != null){
+			statement.setString(7, Middle.toUpperCase());
+		}
+		else{
+			statement.setString(7, "");
+		}
+		
+		if(Suffix != null){
+			statement.setString(8, Suffix.toUpperCase());
+		}
+		else{
+			statement.setString(8, "");
+		}
+	
+		if(PreferredFirstName != null){
+			statement.setString(9, PreferredFirstName.toUpperCase());
+		}
+		else{
+			statement.setString(9, "");
+		}
+		
+		statement.setInt(10, HasAllHoursAccess);
+		
+		rlogger.debug("RulesLibrary-SEN-PluginUtils :: IssueDate " + IssueDate);  
+		
+		if(IssueDate != null){
+			statement.setTimestamp(11, IssueDate);
+		}
+		else{
+			statement.setTimestamp(11, new Timestamp(System.currentTimeMillis()));
+		}
+		if(ExpireDate != null){
+			statement.setTimestamp(12, ExpireDate);
+		}
+		else{
+			statement.setTimestamp(12, new Timestamp(System.currentTimeMillis()));
+		}
+		
+		statement.setTimestamp(13, LastUpdated);		
+		
+		if(Contractor_CO != null){
+			statement.setString(14, Contractor_CO.toUpperCase());
+		}
+		else{
+			statement.setString(14, "");
+		}		
+		
+		statement.setBinaryStream(15, Image);
+		
+		if(DeptID != null){
+			statement.setString(16, DeptID.toUpperCase());
+		}
+		else{
+			statement.setString(16, "");
+		}	
+		
+		statement.setString(17, Notes);
+		
+		if(PersonStatus != null){
+			statement.setString(18, PersonStatus.toUpperCase());
+		}
+		else{
+			statement.setString(18, "");
+		}				
+		
+		if(SailPointUserLastName != null){
+			statement.setString(19, SailPointUserLastName.toUpperCase());
+		}
+		else{
+			statement.setString(19, "");
+		}	
+	
+		if(SailPointUserFirstName != null){
+			statement.setString(20, SailPointUserFirstName.toUpperCase());
+		}
+		else{
+			statement.setString(20, "");
+		}	
+		
+		if(SailPointUserMiddleName != null){
+			statement.setString(21, SailPointUserMiddleName.toUpperCase());
+		}
+		else{
+			statement.setString(21, "");
+		}	
+		
+		//statement.setString(22, RequestUuid);
+		statement.setInt(22, IsSmartCard);
+		
+		if(NonorgStaffType != null){
+			statement.setString(23, NonorgStaffType.toUpperCase());
+		}else{
+			statement.setString(23, "");
+		}	
+		
+		if(OrganizationName != null){
+			statement.setString(24, OrganizationName.toUpperCase());
+		}else{
+			statement.setString(24, "");
+		}	
+		
+	
+		statement.setTimestamp(25, DOB);		
+		statement.setBinaryStream(26, Image);
+		
+		if(SailPointUserEmailAddress != null){
+			statement.setString(27, SailPointUserEmailAddress.toUpperCase());
+		}else{
+			statement.setString(27, "");
+		}	
+		
+		
+
+		try {
+			rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Calling Database executeUpdate");  
+			statement.executeUpdate();
+			rlogger.debug("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: After calling Database executeUpdate");
+
+			// Create audit record
+			Auditor.logAs(requestor.getName(), "IDSystemsRecordSuccess", cube.getName(),"ID Systems record created successfully", "", "", "");       
+            context.commitTransaction();
+		} catch (Exception ex) {
+    		throw new GeneralException("RulesLibrary-SEN-PluginUtils :: createIDSystemRecord :: Exception occurred and the exception is="+ex.getMessage());
+
+			// Create audit record
+			Auditor.logAs(requestor.getName(), "IDSystemsRecordFailure", cube.getName(),"ID Systems record creation failed", "", "", "");       
+            context.commitTransaction();
+
+			return "returned from catch - ";
+	    }
+	}
+   	catch (Exception ex)
+   	{
+   		throw new GeneralException("Exception occurred and the exception is="+ex.getMessage());
+		return "failure";
+
+   	} finally {
+
+   		try {
+			if(statement!=null )
+			{
+				statement.close();
+			}
+			
+			if(connection!=null )
+			{	
+				JdbcUtil.closeConnection(connection);
+			}
+	
+   		}
+   		catch (Exception ex) 
+       	{ 
+   			throw new GeneralException("Exception occurred while closing connection/resultset/prepeared statements and the exception is="+ex.getMessage());  
+       	}
+   	}
+
+	return "success";
+}
+
+
+
+
+// THIS WILL CREATE AN ENTRY IN AD_SYNC TABLE UPON CREATING AN IDENITTY CUBE IN IIQ
+public String createADSyncRecord(Identity requestor, Identity cube, HashMap workflowParams) {
+
+	rlogger.debug("RulesLibrary-SEN-PluginUtils :: Inside createADSyncRecord");
+
+	// Initialize the variables to hold query parameters
+	String LastName = "";
+	String FirstName = "";
+	int SPIN = 0;
+	String Middle = "";
+	String EmailAddress = "";
+	String UPN = "";	
+	
+	String ClientName = "";
+	String IDSystem_AppName = "";
+
+	rlogger.debug("Inside rules library - createADSyncRecord method");
+	
+	LastUpdated = new Timestamp(System.currentTimeMillis());
+	
+	ClientName = workflowParams.get("ClientName");
+	IDSystem_AppName = workflowParams.get("IDSystem_AppName");
+	
+	if(null != cube.getAttribute("spin")) {
+		SPIN = Integer.valueOf(cube.getAttribute("spin").toString());
+	}
+	
+	LastName = cube.getLastname();
+	FirstName = cube.getFirstname();
+
+	if(null != cube.getAttribute("middleName")) {
+		Middle = cube.getAttribute("middleName").toString();
+	}
+	
+	Application adApp = (Application)context.getObject(Application.class, "SMAS-Active-Directory");
+	Link adLink = cube.getLink(adApp);
+	
+	if(null != adLink){
+	 	EmailAddress = adLink.getAttribute("mail");
+	 	UPN = adLink.getAttribute("userPrincipalName");
+	}
+    
+	Id = RequestID+ClientName;
+		
+	// Null/Empty check for the mandatory attributes. Else return failure.
+   	if(LastName==null || LastName.isEmpty() || FirstName==null || FirstName.isEmpty() ||    
+    EmailAddress==null || EmailAddress.isEmpty() ||
+    UPN == null || UPN.isEmpty() || SPIN == null || SPIN == 0)
+	{
+   	 	throw new GeneralException("Invalid or incomplete user data found");
+	}
+
+	rlogger.debug("createADSyncRecord: basic data validation passed");
+
+	// Prepare the Insert sqlQuery
+	String sqlQuery = "insert into AD_Sync ";
+
+	String columns = "(UPN,SMTP,First_Name,Last_Name,Middle_Initial,SPIN,CreateDate,UpdatedBy," +
+	"UpdatedDateTime,UpdateProcess) ";
+
+	// String to be casted as varBinary(Max) for blob attributes
+	String values = "VALUES (?,?,?,?,?,?,?,?,?,?)";
+
+	sqlQuery = sqlQuery + columns + values;
+
+	rlogger.debug("createADSyncRecord: insert query formed");
+
+	Application application = context.getObjectByName(Application.class, IDSystem_AppName);
+	
+	if(application != null){
+		rlogger.debug("createADSyncRecord: application object for triggering insert created");
+	}
+	else{
+		rlogger.debug("createADSyncRecord: application object for triggering insert is null");
+	}
+	
+	
+	String dbUrl = application.getAttributeValue("url").toString();
+	String dbUser = application.getAttributeValue("user").toString();
+	String dbPass = context.decrypt(application.getAttributeValue("password").toString());
+	String driverClass = application.getAttributeValue("driverClass").toString();
+
+   	if(dbUrl==null || dbUrl.isEmpty() || dbUser==null || dbUser.isEmpty() || dbPass==null || dbPass.isEmpty() || driverClass==null || driverClass.isEmpty())
+	{
+   		throw new GeneralException("Invalid DB connection details");
+	}
+	
+	rlogger.debug("createADSyncRecord: dbUser = " + dbUser);
+
+   	HashMap connectionMap = new HashMap();
+   	connectionMap.put(JdbcUtil.ARG_DRIVER_CLASS, driverClass);
+   	connectionMap.put(JdbcUtil.ARG_URL, dbUrl);
+   	connectionMap.put(JdbcUtil.ARG_USER, dbUser);
+   	connectionMap.put(JdbcUtil.ARG_PASSWORD, dbPass);
+
+   	Connection connection = null;
+    PreparedStatement statement = null;
+
+   	try
+   	{
+   		rlogger.debug("createIDSystemRecord :: Trying to get connection to database");  
+   		connection = JdbcUtil.getConnection(connectionMap);
+
+		rlogger.debug("createIDSystemRecord :: query = " + sqlQuery);  
+   		rlogger.debug("createIDSystemRecord :: Prepare the SQL query"); 
+   		 
+		statement = connection.prepareStatement(sqlQuery);
+
+		statement.setString(1, UPN);
+		statement.setString(2, EmailAddress);
+		statement.setString(3, FirstName);
+		statement.setString(4, LastName);
+		statement.setString(5, Middle);
+		statement.setInt(6, SPIN);
+		statement.setTimestamp(7, LastUpdated);
+		statement.setString(8, dbUser);
+		statement.setTimestamp(9, LastUpdated);
+		statement.setString(10, "SailPoint Insert");		
+
+		try {
+			rlogger.debug("createADSyncRecord :: Calling Database executeUpdate");  
+			statement.executeUpdate();
+			rlogger.debug("createADSyncRecord :: After calling Database executeUpdate");
+
+			// Create audit record
+			Auditor.logAs(requestor.getName(), "ADSyncRecordSuccess", cube.getName(),"AD_Sync record created successfully", "", "", "");       
+            context.commitTransaction();
+		} catch (Exception ex) {
+    		throw new GeneralException("Exception occurred and the exception is="+ex.getMessage());
+
+			// Create audit record
+			Auditor.logAs(requestor.getName(), "DSyncRecordFailure", cube.getName(),"AD_Sync record creation failed", "", "", "");       
+            context.commitTransaction();
+
+			return "returned from catch - ";
+	    }
+	}
+   	catch (Exception ex)
+   	{
+   		throw new GeneralException("Exception occurred and the exception is="+ex.getMessage());
+		return "failure";
+   	} finally {
+		if(statement!=null ){
+			statement.close();
+		}
+		if(connection!=null ){	
+			JdbcUtil.closeConnection(connection);
+		}
+   	}
+	return "success";
+}		   
+
+
+
+// THIS WILL CREATE AN ENTRY IN PERSONS TABLE UPON CREATING AN IDENITTY CUBE IN IIQ
+public String insertIdentityToBMS32(Identity requestor, Identity cube, HashMap workflowParams) {
+ 
+              rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: START ");
+		      SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS");
+			  SimpleDateFormat dobDateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss Z yyyy");
+ 
+              // Initialize the variables to hold query parameters
+              String IDSystem_AppName="";
+              String bmsid = "";
+              int SPIN = 0;
+              String LastName = "";
+              String FirstName = "";
+              String Middle = "";
+              String Suffix = "";
+              String PreferredFirstName = "";
+              String AccessHours = "";
+              Timestamp EXPIRE_DATE;
+              Timestamp lastupdated;
+              String lastupdatedby="";
+              String State_EMP="";
+			  String DEPT_ENTRYNAME="";
+              String Contractor_CO = "";
+              String Notes = "";
+              String SmartCard = "";
+              String OrganizationName = "";
+              String dept_name="";
+              Timestamp DOB;
+              Timestamp ts;
+              Timestamp StartDate;
+              Timestamp endDate;
+              int DeptID;
+              int SharedEmp;
+              String Spouse="N";
+              String SmtpEmailAddress="";
+              String UserPrincipalName="";
+              int isTDI=1;
+ 
+              rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: START ");
+ 
+              SharedEmp = 0;
+              State_EMP = "N";
+             
+              Notes = workflowParams.get("Notes");
+
+			  PersonStatus = (Util.isEmptyOrNull(cube.getAttribute("personaStatus")) ? "I&ASystem" : cube.getAttribute("personaStatus"));
+
+              if(null != cube.getAttribute("personaStatus")) {
+				 PersonStatus = cube.getAttribute("personaStatus").toString();
+              }
+              if(null != cube.getAttribute("StateEmp")) {
+				 State_EMP = cube.getAttribute("StateEmp").toString();
+              }
+             
+    		  IDSystem_AppName = workflowParams.get("IDSystem_AppName");
+              LastName = cube.getLastname();
+              FirstName = cube.getFirstname();
+             
+              if(null != cube.getAttribute("accessHours")) {
+				 AccessHours = cube.getAttribute("accessHours").toString();
+              }
+             
+              if(null != cube.getAttribute("spin")) {
+				 bmsid = String.valueOf(cube.getAttribute("spin").toString());
+              }
+             
+              if(null != cube.getAttribute("middleName")) {
+				 Middle = cube.getAttribute("middleName").toString();
+              }
+ 
+              if(null != cube.getAttribute("extended4")) {
+				 Suffix = cube.getAttribute("extended4").toString();
+              }
+
+			   if(null != cube.getAttribute("extended6")) {
+				 DEPT_ENTRYNAME = cube.getAttribute("extended6").toString();
+              }
+ 
+              if(null != cube.getAttribute("preferredFirstname")) {
+				 PreferredFirstName = cube.getAttribute("preferredFirstname").toString();
+              }
+              if(null != cube.getAttribute("spin")) {
+				 SPIN = Integer.valueOf(cube.getAttribute("spin").toString());
+              }
+ 
+              if(null != cube.getAttribute("endDate")) {
+				 Date parsedEndDate = dateFormat.parse(cube.getAttribute("endDate").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method parsedEndDate "+parsedEndDate);
+				 EXPIRE_DATE = new java.sql.Timestamp(parsedEndDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method EXPIRE_DATE "+EXPIRE_DATE);
+    		  }
+ 
+              if(null != cube.getAttribute("contractorCo")) {
+				 Contractor_CO = cube.getAttribute("contractorCo").toString();
+              }
+ 
+              if(null != cube.getAttribute("deptNumber")) {
+				 DeptID = Integer.valueOf(cube.getAttribute("deptNumber").toString());
+              }
+              if(null != cube.getAttribute("extended3")) {
+				 OrganizationName = cube.getAttribute("extended3").toString();
+              }
+    		  Application adApp = (Application)context.getObject(Application.class, "SMAS-Active-Directory");
+             
+              Link adLink = cube.getLink(adApp);
+              if(null != adLink) {
+              SmtpEmailAddress = adLink.getAttribute("mail");
+              UserPrincipalName = adLink.getAttribute("userPrincipalName");
+              }
+                            
+    		  if(null != cube.getAttribute("dob")) {
+				 Date parsedDobDate = dateFormat.parse(cube.getAttribute("dob").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Inside rules library - createIDPersonsRecord method parsedDobDate "+parsedDobDate);
+				 DOB = new java.sql.Timestamp(parsedDobDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method DOB "+DOB);
+              }
+             
+              if(null != cube.getAttribute("startDate")) {
+				 Date parsedStartDate = dateFormat.parse(cube.getAttribute("startDate").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method parsedStartDate "+parsedStartDate);
+				 StartDate = new java.sql.Timestamp(parsedStartDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Inside rules library - createIDPersonsRecord method StartDate "+StartDate);
+    		  }
+             
+              lastupdatedby=requestor.getName();
+              if(bmsid==null || bmsid.isEmpty() || LastName==null || LastName.isEmpty() || FirstName==null ||
+              	FirstName.isEmpty() || PersonStatus==null || PersonStatus.isEmpty() ||
+              	SPIN == null || SPIN == 0 || DeptID == null || DeptID == 0)
+              {
+                    throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Invalid or incomplete user data found");
+              }
+ 
+              // Prepare the Insert sqlQuery
+              String sqlQuery = "insert into Persons ";
+ 
+              String columns = "(bmsid,lastupdatedby,SPIN,LastName,FirstName,Middle," +
+				"Suffix,PreferredFirstName,PersonStatus,State_EMP,EXPIRE_DATE,AccessHours," +
+				"Spouse,DeptID,Contractor_CO,Notes,dept_name,OrganizationName," +
+              "SmtpEmailAddress,UserPrincipalName,DOB,StartDate,isTDI, DEPT_ENTRYNAME) ";
+             
+              String values = "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                            
+             
+              sqlQuery = sqlQuery + columns + values;
+ 
+              Application application = context.getObjectByName(Application.class, IDSystem_AppName);
+              if(application != null){
+                rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method application object for triggering insert created");
+              }else{
+                rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: method application object for triggering insert is null");
+              }
+ 
+              String dbUrl = application.getAttributeValue("url").toString();
+              String dbUser = application.getAttributeValue("user").toString();
+              String dbPass = context.decrypt(application.getAttributeValue("password").toString());
+              String driverClass = application.getAttributeValue("driverClass").toString();
+ 
+              if(dbUrl==null || dbUrl.isEmpty() || dbUser==null || dbUser.isEmpty() || dbPass==null || dbPass.isEmpty() || driverClass==null || driverClass.isEmpty())
+              {
+                     throw new GeneralException("Invalid DB connection details");
+              }
+              rlogger.debug("insertIdentityToBMS32: dbUser = " + dbUser);
+              rlogger.debug("insertIdentityToBMS32: driverClass = " + driverClass);
+              rlogger.debug("insertIdentityToBMS32: dbUrl = " + dbUrl);
+              rlogger.debug("insertIdentityToBMS32: dbPass = " + dbPass);
+ 			
+              HashMap connectionMap = new HashMap();
+              connectionMap.put(JdbcUtil.ARG_DRIVER_CLASS, driverClass);
+              connectionMap.put(JdbcUtil.ARG_URL, dbUrl);
+              connectionMap.put(JdbcUtil.ARG_USER, dbUser);
+              connectionMap.put(JdbcUtil.ARG_PASSWORD, dbPass);
+ 
+              Connection connection = null;
+    		  PreparedStatement statement = null;
+ 
+              try
+              {
+				 rlogger.debug("insertIdentityToBMS32 :: Trying to get connection to database"); 
+				 connection = JdbcUtil.getConnection(connectionMap);
+
+				 rlogger.debug("insertIdentityToBMS32 :: query = " + sqlQuery); 
+				 rlogger.debug("insertIdentityToBMS32 :: Prepare the SQL query"); 
+				 statement = connection.prepareStatement(sqlQuery);
+				 rlogger.debug("insertIdentityToBMS32 :: End of Prepare the SQL query: "+statement);
+				 statement.setString(1, bmsid);
+				 //statement.setTimestamp(2, lastupdated);
+				 statement.setString(2, lastupdatedby);
+				 statement.setInt(3, SPIN);
+				 statement.setString(4, LastName);
+				 statement.setString(5, FirstName);
+				 statement.setString(6, Middle);
+				 statement.setString(7, Suffix);
+				 statement.setString(8, PreferredFirstName);
+				 statement.setString(9, PersonStatus);
+				 //statement.setTimestamp(11, CreateDate);
+				 statement.setString(10, State_EMP);
+				 statement.setTimestamp(11, EXPIRE_DATE);
+				 statement.setString(12, AccessHours);
+				 statement.setString(13, Spouse);
+				 statement.setInt(14, DeptID);
+				 statement.setString(15, Contractor_CO);
+				 statement.setString(16, Notes);//workflow
+				 statement.setString(17, dept_name);
+				 statement.setString(18, OrganizationName);
+				 statement.setString(19, SmtpEmailAddress);
+				 statement.setString(20, UserPrincipalName);
+				 //statement.setInt(25, Shared_Employee);
+				 statement.setTimestamp(21, DOB);
+				 statement.setTimestamp(22, StartDate);
+				 statement.setInt(23, isTDI);
+				 statement.setString(24, DEPT_ENTRYNAME);
+				 try {
+					 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Calling Database executeUpdate SQL statement");
+					 statement.executeUpdate();
+					 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: End of Calling Database executeUpdate SQL statement");
+				 } catch (Exception ex) {
+					throw new GeneralException("Exception occurred and the exception is="+ex.getMessage());
+					return "returned from catch - ";
+                 }
+              }
+              catch (Exception ex){
+                throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Exception occurred and the exception is="+ex.getMessage());
+                return "failure";
+ 
+              }finally {
+				try {
+                     if(statement!=null )statement.close();
+                     if(connection!=null )JdbcUtil.closeConnection(connection);
+                }catch (Exception ex){
+                    throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertIdentityToBMS32 :: Exception occurred while closing connection/resultset/prepeared statements and the exception is="+ex.getMessage()); 
+				}
+              }
+              return "success";
+}
+
+
+
+
+
+public String insertTDIRecordToBMS32(Identity requestor, Identity cube, HashMap workflowParams) {
+ 
+              rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: START ");
+		      SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS");
+			  SimpleDateFormat dobDateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss Z yyyy");
+ 
+              // Initialize the variables to hold query parameters
+              String IDSystem_AppName="";
+              String bmsid = "";
+              int SPIN = 0;
+              String LastName = "";
+              String FirstName = "";
+              String Middle = "";
+              String Suffix = "";
+              String PreferredFirstName = "";
+              String AccessHours = "";
+              Timestamp EXPIRE_DATE;
+              Timestamp lastupdated;
+              String lastupdatedby="";
+              String State_EMP="";
+              String Contractor_CO = "";
+              String Notes = "";
+              String SmartCard = "";
+              String OrganizationName = "";
+              String dept_name="";
+              Timestamp DOB;
+              Timestamp ts;
+              Timestamp StartDate;
+              Timestamp endDate;
+              int DeptID;
+              int SharedEmp;
+              String Spouse="N";
+              String SmtpEmailAddress="";
+              String UserPrincipalName="";
+              int isTDI=1;
+			  String DEPT_ENTRYNAME="";
+              rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: START ");
+ 
+              SharedEmp = 0;
+              State_EMP = "N";
+             
+              Notes = workflowParams.get("Notes");
+
+			  PersonStatus = (Util.isEmptyOrNull(cube.getAttribute("personaStatus")) ? "I&ASystem" : cube.getAttribute("personaStatus"));
+
+              if(null != cube.getAttribute("personaStatus")) {
+				 PersonStatus = cube.getAttribute("personaStatus").toString();
+              }
+              if(null != cube.getAttribute("StateEmp")) {
+				 State_EMP = cube.getAttribute("StateEmp").toString();
+              }
+             
+    		  IDSystem_AppName = workflowParams.get("IDSystem_AppName");
+              LastName = cube.getLastname();
+              FirstName = cube.getFirstname();
+             
+              if(null != cube.getAttribute("accessHours")) {
+				 AccessHours = cube.getAttribute("accessHours").toString();
+              }
+             
+              if(null != cube.getAttribute("spin")) {
+				 bmsid = String.valueOf(cube.getAttribute("spin").toString());
+              }
+             
+              if(null != cube.getAttribute("middleName")) {
+				 Middle = cube.getAttribute("middleName").toString();
+              }
+ 
+              if(null != cube.getAttribute("extended4")) {
+				 Suffix = cube.getAttribute("extended4").toString();
+              }
+
+			    if(null != cube.getAttribute("extended6")) {
+				 DEPT_ENTRYNAME = cube.getAttribute("extended6").toString();
+              }
+ 
+              if(null != cube.getAttribute("preferredFirstname")) {
+				 PreferredFirstName = cube.getAttribute("preferredFirstname").toString();
+              }
+              if(null != cube.getAttribute("spin")) {
+				 SPIN = Integer.valueOf(cube.getAttribute("spin").toString());
+              }
+ 
+              if(null != cube.getAttribute("endDate")) {
+				 Date parsedEndDate = dateFormat.parse(cube.getAttribute("endDate").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method parsedEndDate "+parsedEndDate);
+				 EXPIRE_DATE = new java.sql.Timestamp(parsedEndDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method EXPIRE_DATE "+EXPIRE_DATE);
+    		  }
+ 
+              if(null != cube.getAttribute("contractorCo")) {
+				 Contractor_CO = cube.getAttribute("contractorCo").toString();
+              }
+ 
+              if(null != cube.getAttribute("deptNumber")) {
+				 DeptID = Integer.valueOf(cube.getAttribute("deptNumber").toString());
+              }
+              if(null != cube.getAttribute("extended3")) {
+				 OrganizationName = cube.getAttribute("extended3").toString();
+              }
+    		  Application adApp = (Application)context.getObject(Application.class, "SMAS-Active-Directory");
+             
+              Link adLink = cube.getLink(adApp);
+              if(null != adLink) {
+              SmtpEmailAddress = adLink.getAttribute("mail");
+              UserPrincipalName = adLink.getAttribute("userPrincipalName");
+              }
+                            
+    		  if(null != cube.getAttribute("dob")) {
+				 Date parsedDobDate = dateFormat.parse(cube.getAttribute("dob").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Inside rules library - createIDPersonsRecord method parsedDobDate "+parsedDobDate);
+				 DOB = new java.sql.Timestamp(parsedDobDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method DOB "+DOB);
+              }
+             
+              if(null != cube.getAttribute("startDate")) {
+				 Date parsedStartDate = dateFormat.parse(cube.getAttribute("startDate").toString());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method parsedStartDate "+parsedStartDate);
+				 StartDate = new java.sql.Timestamp(parsedStartDate.getTime());
+				 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Inside rules library - createIDPersonsRecord method StartDate "+StartDate);
+    		  }
+             
+              lastupdatedby=requestor.getName();
+              if(bmsid==null || bmsid.isEmpty() || LastName==null || LastName.isEmpty() || FirstName==null ||
+              	FirstName.isEmpty() || PersonStatus==null || PersonStatus.isEmpty() ||
+              	SPIN == null || SPIN == 0 || DeptID == null || DeptID == 0)
+              {
+                    throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Invalid or incomplete user data found");
+              }
+ 
+              // Prepare the Insert sqlQuery
+              String sqlQuery = "insert into Persons ";
+ 
+              String columns = "(bmsid,lastupdatedby,SPIN,LastName,FirstName,Middle," +
+				"Suffix,PreferredFirstName,PersonStatus,State_EMP,EXPIRE_DATE,AccessHours," +
+				"Spouse,DeptID,Contractor_CO,Notes,dept_name,OrganizationName," +
+              "SmtpEmailAddress,UserPrincipalName,DOB,StartDate,isTDI, DEPT_ENTRYNAME) ";
+             
+              String values = "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                            
+             
+              sqlQuery = sqlQuery + columns + values;
+ 
+              Application application = context.getObjectByName(Application.class, IDSystem_AppName);
+              if(application != null){
+                rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method application object for triggering insert created");
+              }else{
+                rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: method application object for triggering insert is null");
+              }
+ 
+              String dbUrl = application.getAttributeValue("url").toString();
+              String dbUser = application.getAttributeValue("user").toString();
+              String dbPass = context.decrypt(application.getAttributeValue("password").toString());
+              String driverClass = application.getAttributeValue("driverClass").toString();
+ 
+              if(dbUrl==null || dbUrl.isEmpty() || dbUser==null || dbUser.isEmpty() || dbPass==null || dbPass.isEmpty() || driverClass==null || driverClass.isEmpty())
+              {
+                     throw new GeneralException("Invalid DB connection details");
+              }
+              rlogger.debug("insertIdentityToBMS32: dbUser = " + dbUser);
+              rlogger.debug("insertIdentityToBMS32: driverClass = " + driverClass);
+              rlogger.debug("insertIdentityToBMS32: dbUrl = " + dbUrl);
+              rlogger.debug("insertIdentityToBMS32: dbPass = " + dbPass);
+ 			
+              HashMap connectionMap = new HashMap();
+              connectionMap.put(JdbcUtil.ARG_DRIVER_CLASS, driverClass);
+              connectionMap.put(JdbcUtil.ARG_URL, dbUrl);
+              connectionMap.put(JdbcUtil.ARG_USER, dbUser);
+              connectionMap.put(JdbcUtil.ARG_PASSWORD, dbPass);
+ 
+              Connection connection = null;
+    		  PreparedStatement statement = null;
+ 
+              try
+              {
+				 rlogger.debug("insertIdentityToBMS32 :: Trying to get connection to database"); 
+				 connection = JdbcUtil.getConnection(connectionMap);
+
+				 rlogger.debug("insertIdentityToBMS32 :: query = " + sqlQuery); 
+				 rlogger.debug("insertIdentityToBMS32 :: Prepare the SQL query"); 
+				 statement = connection.prepareStatement(sqlQuery);
+				 rlogger.debug("insertIdentityToBMS32 :: End of Prepare the SQL query: "+statement);
+				 statement.setString(1, bmsid);
+				 //statement.setTimestamp(2, lastupdated);
+				 statement.setString(2, lastupdatedby);
+				 statement.setInt(3, SPIN);
+				 statement.setString(4, LastName);
+				 statement.setString(5, FirstName);
+				 statement.setString(6, Middle);
+				 statement.setString(7, Suffix);
+				 statement.setString(8, PreferredFirstName);
+				 statement.setString(9, PersonStatus);
+				 //statement.setTimestamp(11, CreateDate);
+				 statement.setString(10, State_EMP);
+				 statement.setTimestamp(11, EXPIRE_DATE);
+				 statement.setString(12, AccessHours);
+				 statement.setString(13, Spouse);
+				 statement.setInt(14, DeptID);
+				 statement.setString(15, Contractor_CO);
+				 statement.setString(16, Notes);//workflow
+				 statement.setString(17, dept_name);
+				 statement.setString(18, OrganizationName);
+				 statement.setString(19, SmtpEmailAddress);
+				 statement.setString(20, UserPrincipalName);
+				 //statement.setInt(25, Shared_Employee);
+				 statement.setTimestamp(21, DOB);
+				 statement.setTimestamp(22, StartDate);
+				 statement.setInt(23, isTDI);
+				 statement.setString(24, DEPT_ENTRYNAME);
+				 try {
+					 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Calling Database executeUpdate SQL statement");
+					 statement.executeUpdate();
+					 rlogger.debug("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: End of Calling Database executeUpdate SQL statement");
+				 } catch (Exception ex) {
+					throw new GeneralException("Exception occurred and the exception is="+ex.getMessage());
+					return "returned from catch - ";
+                 }
+              }
+              catch (Exception ex){
+                throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Exception occurred and the exception is="+ex.getMessage());
+                return "failure";
+ 
+              }finally {
+				try {
+                     if(statement!=null )statement.close();
+                     if(connection!=null )JdbcUtil.closeConnection(connection);
+                }catch (Exception ex){
+                    throw new GeneralException("RulesLibrary-SEN-PluginUtils :: insertTDIRecordToBMS32 :: Exception occurred while closing connection/resultset/prepeared statements and the exception is="+ex.getMessage()); 
+				}
+              }
+              return "success";
+}
+
+
+		   
+]]>	</Source>
+</Rule>
+</sailpoint>

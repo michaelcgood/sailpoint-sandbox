@@ -1,0 +1,2272 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Rule PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<Rule language="beanshell" name="RulesLibrary-SEN-Identity">
+	<ReferencedRules>
+	    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Utils"/>
+	    <Reference class="sailpoint.object.Rule" name="RuleLibrary-SEN-WebServices"/>
+	    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Departments"/>
+	    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-ADFieldValue"/>
+    </ReferencedRules>
+  <Source><![CDATA[
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import sailpoint.api.SailPointContext;
+import sailpoint.api.SailPointFactory;
+import sailpoint.api.IdentityService;
+import sailpoint.object.Workflow;		
+
+import sailpoint.object.Application;
+import sailpoint.object.Filter;
+import sailpoint.object.Identity;
+import sailpoint.object.Bundle;
+import sailpoint.object.Link;
+import sailpoint.object.QueryOptions;
+import sailpoint.server.InternalContext;
+import sailpoint.tools.GeneralException;
+import sailpoint.tools.Util;
+import sailpoint.object.Custom;
+import sailpoint.object.ProvisioningPlan.Operation;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.object.ProvisioningPlan;
+import sailpoint.object.ProvisioningPlan.AttributeRequest;
+import sailpoint.object.Attributes;
+import sailpoint.object.Workflow;
+import sailpoint.object.Request;
+import sailpoint.object.RequestDefinition;
+import sailpoint.api.RequestManager;
+import sailpoint.tools.GeneralException;
+import sailpoint.workflow.StandardWorkflowHandler;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.Date; 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import sailpoint.object.Application;
+import sailpoint.object.Attributes;
+import sailpoint.object.ResourceObject;
+import sailpoint.object.TaskResult;
+import sailpoint.object.Rule;
+import sailpoint.connector.JDBCConnector;
+import sailpoint.api.Aggregator;
+import sailpoint.connector.Connector;
+import java.text.SimpleDateFormat;
+import java.text.DateFormat;
+
+private static Log logger = LogFactory.getLog("org.rulelibraries");
+
+// Identity Related Attributes
+public static String STR_MANAGE_IDEN_IMMEDIATE_TYPE ="Immediate";
+public static String STR_MANAGE_IDEN_SCHEDULED_TYPE="Scheduled";
+
+public static String STR_DATE_FORMAT ="MM/dd/yyyy";
+
+// Identity Related Attributes
+public static String STR_IDENTITY_ACTIONSTATUS ="actionStatus";
+public static String STR_IDENTITY_ACTIONDATE="actionDate";
+public static String STR_IDENTITY_STATUS="status";
+
+// Identity status values
+public static String STR_IDEN_SUSPEND_STATUS ="Suspended";
+public static String STR_IDEN_TERMINATE_STATUS="Terminated";
+public static String STR_IDEN_ACTIVE_STATUS="Active";
+
+// Identity status values
+public static String STR_UI_SUSPEND_STATUS ="Suspended";
+public static String STR_UI_TERMINATE_STATUS="Terminated";
+public static String STR_UI_RESTORE_STATUS="Restored";
+public static String STR_UI_REHIRED_STATUS="Rehired";
+
+// Status
+public static String STR_SUCCESS="Success";
+public static String STR_COMMITED="commited";
+public static String STR_FAILURE="Failure";
+
+// Manager Identity form values
+public static String STR_SUSPEND_STATUS ="Suspend";
+public static String STR_TERMINATE_STATUS="Terminate";
+public static String STR_RESTORE_STATUS="Restore";
+public static String STR_REHIRE_STATUS="Rehire";
+public static String STR_DELETE_STATUS="Delete";
+
+public static String STR_SUSPEND_ACTION_STATUS="needSuspended";
+public static String STR_TERMINATE_ACTION_STATUS="needTerminated";
+public static String STR_RESTORE_ACTION_STATUS="needRestored";
+public static String STR_REHIRE_ACTION_STATUS="needRehired";
+public static String STR_DELETED_ACTION_STATUS="needDeleted";
+
+public static String STR_JOINER_ACTION_STATUS="needJoiner";
+public static String STR_CHG_BRANCH_ACTION_STATUS="needChangeBranch";
+public static String STR_NAME_CHANGE_ACTION_STATUS="needNameChange";
+
+public static String STR_JOINER_STATUS="Joiner";
+public static String STR_CHANGE_DEPARTMENT="ChangeDepartment";
+public static String STR_CHANGE_PERSON_STATUS="ChangePersonStatus";
+public static String STR_NAME_CHANGE_STATUS="NameChange";
+
+public static String STR_REQUESTOR_IDENTITY = "spadmin"; 
+public static String STR_CONNECTOR_OBJECT_TYPE = "account"; 
+ 
+ // Create-Update Identity variables
+public static String STR_CREATE_IDENTITY ="CreatePersona";
+public static String STR_CREATE_BR_ADACCOUNT ="CreateBirthRightADAccount";
+
+
+public static String STR_CREATE_SECONDARY_IDENTITY ="CreateSecondaryPersona";
+public static String STR_CREATE_SHARED_IDENTITY ="CreateSharedPersona";
+public static String STR_TRANSFER_IDENTITY ="TransferEmployee";
+public static String STR_MOVE_IDENTITY ="MoveIdentity";
+public static String STR_REACTIVATE_IDENTITY ="ReactivateIdentity";
+public static String STR_UPDATE_IDENTITY="ModifyIdentity";
+public static String STR_NAMECHANGE_IDENTITY="IdentityNameChanges";
+public static String STR_IDENTITY_DISPLAY_NAME="DisplayName";
+public static String STR_IDENTITY_CUSTOM_OBJECT="Custom-SEN-Persona-Mapping-Model";
+public static String STR_IDENTITY_DEPARTMENT="deptNumber";
+public static String STR_IDENTITY_FIRSTNAME="firstname";
+public static String STR_IDENTITY_LASTNAME="lastname";
+public static String STR_IDENTITY_DISPLAYBLE_NAME="displayName";
+public static String STR_ROLE_ATTR = "assignedRoles";
+public static String STR_BIRTHRIGHT_ROLE = "Active Directory User IT";
+
+public static String STR_AD_APP_NAME = "SMAS-Active-Directory";
+public static String STR_BMS32_APP_NAME = "Application-SEN-BMS32Main";
+public static String STR_BADGE_HISTORY_APP_NAME = "SEN-BadgeHistory";
+    
+ public static String STR_WKFL_SOURCE = "LCM"; // Source name to be used in workflow
+ public static String STR_WKFL_TARGET = "IIQ"; // Workflow attribute - Target for role assignment
+ public static String STR_WKFL_ATTR = "assignedRoles";
+ public static String STR_WKFL_NAME = "SEN-Mover"; // Worklflow name to be used in Mover workflow
+
+ public static int    INT_DEF_WKF_INTEVAL = 1000; // Time Interval in millisecond before starting workflow
+ public static int    INT_DEF_WKF_DELAYED_INTERVAL = 2000; // Time Interval in millisecond before starting workflow for Change Branch.
+ public static String STR_WKFL_REQUEST_TYPE = "AccessRequest"; // Request Type to be used in workflow
+ public static String STR_WKFL_NONE = "none"; 
+ public static String STR_WKFL_FALSE = "false"; 
+ public static String STR_WKFL_REQUEST_NAME = "Workflow Request"; // Worklflow Request name
+ public static String STR_DEFAULT_DOMAINCONTROLLER = "%%AD_FOREST%%"; //"org.usorg.lab";
+
+//GLOBAL EMAIL ADDRESS
+ public static String HREmail = "SAAIAM-IIQDev@saa.org.com"; //"hr@saa.org.com";   //hr@saa.org.com;
+ public static String IAMEmail = "SAAIAM-IIQDev@saa.org.com";  //IIQDev@saa.org.com;
+ 
+ public static SimpleDateFormat spFormat = new SimpleDateFormat("MM/dd/yyyy");
+ public static String spInputDateFormatStr = "EEE MMM dd HH:mm:ss zzz yyyy";
+ public static SimpleDateFormat spInputDateFormat = new SimpleDateFormat(spInputDateFormatStr);
+
+
+ public static SimpleDateFormat dobDateFormat = new SimpleDateFormat("MM/dd/yyyy hh:mm:ss aaa z");
+
+
+   private Log ilogger = LogFactory.getLog("org.rulelibraries");
+ 
+	public static String convertSpDateToStandardFormat(String inDate){
+		String outDateString="";
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertSpDateToStandardFormat :: Enter ");
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertSpDateToStandardFormat :: inDate "+inDate);
+		if(!Util.isNullOrEmpty(inDate)){
+			Date inDateObj = spInputDateFormat.parse(inDate);
+			if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertSpDateToStandardFormat :: inDateObj "+inDateObj);
+			outDateString = spFormat.format(inDateObj);
+		}
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertSpDateToStandardFormat :: outDateString "+outDateString);
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertSpDateToStandardFormat :: Exit ");
+		return outDateString;
+	}
+
+	public static String convertDate(Object inputDate, String strFormat) {
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertDate :: Enter ");
+	
+		String strDate="";
+	
+		if(inputDate!=null){		
+			try {
+					strDate = new SimpleDateFormat(strFormat).format(inputDate);
+			} catch(Exception ex) {
+					ex.printStackTrace();
+			}
+		}
+		
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: convertDate :: Enter ");
+
+		return strDate;
+	}
+
+
+
+    public synchronized String getSPINNextCounter() throws GeneralException
+    {
+        ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: Enter " );
+
+		int nextCounter = 0;
+		Map acctTypeCountersMap = null;
+		String nextCounterString = "";
+		ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: getSPINNextCounter- get Custom-SEN-SPINCounter");
+		Custom configuration = context.getObjectByName(Custom.class, "Custom-SEN-SPINCounter");
+
+		if (configuration != null) {
+			ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: getSPINNextCounter- get attributes");
+			Attributes attributes = configuration.getAttributes();
+			if (attributes != null) {
+				ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: getSPINNextCounter- get the SPIN counter value");
+				Map SPINCounterMap = attributes.getMap();
+				if (SPINCounterMap != null) {
+					String currentCounter = (String) SPINCounterMap.get("SPINCounter");
+					ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: getSPINNextCounter- currentCounter = "+currentCounter);
+
+					int currentCounterValue = Integer.parseInt(currentCounter);
+					nextCounter = currentCounterValue + 1;
+					nextCounterString = String.valueOf(nextCounter);
+					ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter :: getSPINNextCounter- nextCounterString="+nextCounterString);
+
+					SPINCounterMap.put("SPINCounter", nextCounterString);
+					attributes.setMap(SPINCounterMap);
+
+					configuration.setAttributes(attributes);
+					context.saveObject(configuration);
+					context.commitTransaction();
+				}
+			}
+		}
+
+		ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter "+nextCounterString);
+		ilogger.debug("RulesLibrary-SEN-Identity :: getSPINNextCounter Exit ");
+		return nextCounterString;        
+    }
+    
+	public static AccountRequest createIIQUpdates(SailPointContext context,String actionStatus,String actionDate){
+	  if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createIIQUpdates :: Enter ");
+	  
+	  AccountRequest acctReq = new AccountRequest();
+      acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      acctReq.setOperation(AccountRequest.Operation.Modify);
+         
+      acctReq.add(new AttributeRequest(STR_IDENTITY_ACTIONSTATUS, ProvisioningPlan.Operation.Set, actionStatus));
+      acctReq.add(new AttributeRequest(STR_IDENTITY_ACTIONDATE, ProvisioningPlan.Operation.Set, actionDate));
+          
+  	  if(ilogger.isDebugEnabled()) ilogger.debug("AccountRequest before returning is: " + acctReq.toXml());
+           
+      if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createIIQUpdates :: Exit");
+          
+      return acctReq;
+      
+	}
+
+	public static List disableAllAccounts(SailPointContext context,String identityName){
+		  
+		  if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: disableAllAccounts :: Enter");
+	
+		  Identity identity = context.getObjectByName(Identity.class, identityName);
+		  List lnkLst=identity.getLinks();
+		  
+		  ArrayList accntLst=new ArrayList();
+		  
+	      if(null!=lnkLst && lnkLst.size()>0){
+			 for (Link link : lnkLst) {
+				// we removed authoritative application condition 11/9/2022
+		  	 	if (link.getApplication() != null ) {
+					AccountRequest acctReq = new AccountRequest();
+					acctReq.setOperation(AccountRequest.Operation.Disable);
+	      			acctReq.setApplication(link.getApplicationName());
+	      			acctReq.setNativeIdentity(link.getNativeIdentity());
+	      			accntLst.add(acctReq);
+	      		 }  
+			 }
+		  }
+	  	  if(ilogger.isDebugEnabled()) ilogger.debug("AccountRequest before returning is: " + accntLst);
+	      if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: disableAllAccounts :: Exti");
+	      return accntLst;
+	}
+
+	public static List enableAllAccounts(SailPointContext context,String identityName){
+	  
+	  if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: enableAllAccounts :: Enter");
+	  Identity identity = context.getObjectByName(Identity.class, identityName);
+	  
+	  List lnkLst=identity.getLinks();
+	  ArrayList accntLst=new ArrayList();
+      if(null!=lnkLst && lnkLst.size()>0){
+		 for (Link link : lnkLst){
+				AccountRequest acctReq = new AccountRequest();
+				acctReq.setOperation(AccountRequest.Operation.Enable);
+      			acctReq.setApplication(link.getApplicationName());
+      			acctReq.setNativeIdentity(link.getNativeIdentity());
+      			accntLst.add(acctReq);
+			}
+	  }
+  	  if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: enableAllAccounts :: AccountRequest before returning is: " + acctReq);
+      if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: enableAllAccounts :: Exit");
+          
+      return accntLst;
+      
+	}
+
+
+	public static List createJoinerPlan(SailPointContext context,String identityName){
+	  
+	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlan :: Enter");
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+	   
+	  	ArrayList accntLst=new ArrayList();
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	acctReq.setOperation(AccountRequest.Operation.Modify);
+      	acctReq.setNativeIdentity(identityName);
+      			
+      	acctReq.add(new AttributeRequest(STR_ROLE_ATTR, ProvisioningPlan.Operation.Set, STR_BIRTHRIGHT_ROLE)); // BirthRight Role
+      
+      	accntLst.add(acctReq);
+      		
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlan :: AccountRequest before returning is: " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlan :: Exit");
+          
+      	return accntLst;
+      
+	}
+
+
+	public static AccountRequest createJoinerPlanWithADBrRole(SailPointContext context,String identityName){
+	  
+	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlanWithADBrRole :: Enter");
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+	   
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(STR_AD_APP_NAME);
+      	//acctReq.setOperation(AccountRequest.Operation.Modify);
+      	acctReq.setOperation(AccountRequest.Operation.Create);
+      	
+      	Identity targetIdentity = context.getObjectByName(Identity.class,identityName);
+	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlanWithADBrRole :: targetIdentity "+targetIdentity.getName());
+      	
+      	//String adDn = getADDistinguishedName(context,targetIdentity,"create");
+	  	//if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlanWithADBrRole :: adDn "+adDn);
+      	//acctReq.setNativeIdentity(adDn);
+      			
+      	acctReq.add(new AttributeRequest(STR_ROLE_ATTR, ProvisioningPlan.Operation.Set, STR_BIRTHRIGHT_ROLE)); // BirthRight Role
+      
+      	//accntLst.add(acctReq);
+      		
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlanWithADBrRole :: AccountRequest before returning is: " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createJoinerPlanWithADBrRole :: Exit");
+          
+      	return acctReq;
+      
+	}
+	public static List createChangeDepartmentPlan(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createChangeDepartmentPlan :: Enter");
+	  
+	   	Identity identity = context.getObjectByName(Identity.class, identityName);
+	   
+	  	ArrayList accntLst=new ArrayList();
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(STR_AD_APP_NAME);
+      	acctReq.setOperation(AccountRequest.Operation.Modify);
+      
+      	Link adAppLink=getSafeLink(context,identity,STR_AD_APP_NAME); 
+      
+      	acctReq.setNativeIdentity(adAppLink.getNativeIdentity());
+ 	    //acctReq.addArgument("preferredServer","prefferedServer");
+    
+    	String strNativeIdentity=getADDistinguishedName(context, identity,"Update");
+			            
+        String nativeId=(String)adAppLink.getNativeIdentity();
+        String newVal=strNativeIdentity; 
+        List attrReqs = new ArrayList();
+            
+		updateADDNNameFields(nativeId, newVal, attrReqs); // function to calculate Attribute param for 
+			
+		if (attrReqs != null && attrReqs.size() > 0) {			
+			acctReq.addAll(attrReqs);
+		}
+			      
+      	accntLst.add(acctReq);
+      		
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createChangeDepartmentPlan :: AccountRequest before returning is: " + acctReq.toXml());
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createChangeDepartmentPlan :: Exit");
+          
+      	return accntLst;
+      
+	}
+
+	public static List createNameTransferPlan(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createNameTransferPlan :: Enter");
+		
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+		 
+		ArrayList accntLst=new ArrayList();
+		
+		 AccountRequest acctReq = new AccountRequest();
+		 acctReq.setApplication(STR_AD_APP_NAME);
+		 acctReq.setOperation(AccountRequest.Operation.Modify);
+		 
+		 Link adAppLink=getSafeLink(context,identity,STR_AD_APP_NAME); 
+		 
+		 acctReq.setNativeIdentity(adAppLink.getNativeIdentity());
+		 
+		 //String strADEmail="@org.com";
+		  
+		 // strADEmail=getFV_Active_Directory_mail_Rule(context,ident,"MODIFY");
+		 // String mailNickName="firstname.lastname";
+		 String newSAMAccountName=(String)generateADSAMAccountName(context,identity,"Update");
+		 //  getFV_Active_Directory_mailNickname_Rule(context,ident,"MODIFY");
+		 String firstName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_FIRSTNAME);
+		 String lastName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_LASTNAME);
+		 String displayName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_DISPLAYBLE_NAME);
+		 String mailNickName=getADMailNickname(context, identity,"Update");
+        
+     	 String newDNVal=getADDistinguishedName(context, identity,"Update");
+      	 //  (String)getFV_Active_Directory_distinguishedName_Rule(context,ident,"Modify");
+		 //  acctReq.addArgument("preferredServer","prefferedServer");
+    
+  		 List attrs = new ArrayList();
+         attrs.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, firstName));
+         attrs.add(new AttributeRequest("sn", ProvisioningPlan.Operation.Set, lastName));
+         //attrs.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set, displayName));
+         //attrs.add(new AttributeRequest("distinguishedName", ProvisioningPlan.Operation.Set, newDNVal)); 
+         attrs.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set, newSAMAccountName));
+         attrs.add(new AttributeRequest("mailNickName", ProvisioningPlan.Operation.Set, mailNickName));
+
+        
+		 //  attrs.add(new AttributeRequest("proxyAddresses", ProvisioningPlan.Operation.Set, strProxyAddress));
+		 //  attrs.add(new AttributeRequest("mail", ProvisioningPlan.Operation.Set, strADEmail));
+		 //  attrs.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set, strUserPrincipalName));  
+		 //  attrs.add(new AttributeRequest("homeDirectory", ProvisioningPlan.Operation.Set, strHomeDirectory));   
+		attrs.add(new AttributeRequest("DomainController", ProvisioningPlan.Operation.Set,STR_DEFAULT_DOMAINCONTROLLER)); 
+    
+     	acctReq.addAll(attrs);
+    
+     	accntLst.add(acctReq);
+  
+  		List attrReqs = new ArrayList();
+            
+		updateADDNNameFields(adAppLink.getNativeIdentity(), newDNVal, attrReqs); // function to calculate Attribute param for 
+			
+		if (attrReqs != null && attrReqs.size() > 0) {			
+			/*Iterator attIterator = attrReqs.iterator();
+          	while (attIterator.hasNext()) {
+                AttributeRequest attRequest=attIterator.next();
+                if(attRequest.getName().equalsIgnoreCase("AC_NewName")){
+                    acctReq.add(attRequest);
+                }
+            }*/
+      		acctReq.addAll(attrReqs);
+		}
+			      
+        accntLst.add(acctReq);
+    		
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("createNameTransferPlan before returning is: " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createNameTransferPlan :: Exit");
+          
+      return accntLst;
+      
+}
+
+public static List deleteAllAccounts(SailPointContext context,String identityName)
+{
+	  
+	  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: deleteAllAccounts :: Enter");
+	  
+	   Identity identity = context.getObjectByName(Identity.class, identityName);
+	  //0726 CodeReview it is a valid use case 
+	  List lnkLst=identity.getLinks();
+	  
+	  ArrayList accntLst=new ArrayList();
+	  
+      if(null!=lnkLst && lnkLst.size()>0)
+		{
+		 for (Link link : lnkLst) 
+			{
+				
+				AccountRequest acctReq = new AccountRequest();
+				acctReq.setOperation(AccountRequest.Operation.Delete);
+      			acctReq.setApplication(link.getApplicationName());
+      			acctReq.setNativeIdentity(link.getNativeIdentity());
+      			accntLst.add(acctReq);
+			}
+		}
+          
+  	  if(logger.isDebugEnabled()) logger.debug("AccountRequest before returning is: " + acctReq);
+           
+      if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: deleteAllAccounts :: Exit");
+          
+      return accntLst;
+      
+}
+
+
+
+	public static AccountRequest createBasicADAccount(SailPointContext context,Identity targetIdentity,Workflow workflow){
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: Enter");
+	  
+	  	AccountRequest adAcctReq = new AccountRequest();
+      	adAcctReq.setApplication(STR_AD_APP_NAME);
+      	adAcctReq.setOperation(AccountRequest.Operation.Create);
+      
+      	String personaSPIN = null;
+		String personaStatus = null;
+      	HashMap personaModel = workflow.get("personaModel");
+
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: personaModel from WF is "+personaModel);
+
+		String dNum = null;
+		String exclusiveOU = null;
+		String exclusiveSecGroup = null;
+		
+		dNum = targetIdentity.getAttribute("deptNumber");
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: dNum from targetIdentity is "+dNum);
+
+		if(null != targetIdentity){
+			personaStatus = targetIdentity.getAttribute("personaStatus");
+			if(Util.isEmpty(personaStatus)){
+				personaStatus = targetIdentity.getAttribute("formPersonaStatus");
+			}
+		}
+		
+		if(null == dNum){
+			dNum = personaModel.get("deptNum");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: dNum from identityModel is "+dNum);
+		}
+
+		//spinForAD is nothing but identity.name
+      	String identitySpin = workflow.get("personaSPIN");
+      	//SEND 0916 No need of 3 Char String in the identity.name
+      	String spinForAD = identitySpin; //identitySpin.substring(0,identitySpin.length()-3).trim();
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The spinForAD  is "+spinForAD);
+	    String sAMAccountName = null;
+	    String distinguishedName = null;
+		//SMASServerNamePrefix
+		String dnString = null;
+		String smasServerNamePrifix = null;
+		String upnString = null;
+		smasServerNamePrifix = getADAttributeFromDepartment(dNum,"SMASServerNamePrefix");
+		//smasServerNamePrifix = getAttributeValFromDepartment(dNum,"SMASServerNamePrefix");
+      	if(null != smasServerNamePrifix){
+      		sAMAccountName = generateADSAMAccountName(context,targetIdentity,"Create"); //spinForAD+smasServerNamePrifix;
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The sAMAccountName  is "+sAMAccountName);
+			upnString = getADUserPrinciplaName(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The upnString  is "+upnString);
+      	}
+      
+        
+      	HashMap createMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_CREATE_BR_ADACCOUNT);
+	  	Iterator it = createMap.entrySet().iterator();
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+        	
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	
+        	String dataValue=returnBlank(personaModel.get(key));
+        	if(Util.isNotNullOrEmpty(dataValue)){
+      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      		}
+      		
+      		if(key.equalsIgnoreCase("formDepartmentOu")){
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The distinguishedName  set thru form inputs pair.getValue() "+pair.getValue());
+      			//distinguishedName = pair.getValue();
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The distinguishedName  set thru form inputs  "+distinguishedName);
+      		}
+      		
+      		if(key.equalsIgnoreCase("formDepartmentSecGroup")){
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: memberOf set thru form inputs  "+key+ "  value :"+value);
+	        	String memberValStr = returnBlank(personaModel.get(key));
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: memberOf set thru form inputs  "+key+ "  memberValStr :"+memberValStr);
+	      		if(Util.isNotNullOrEmpty(memberValStr)){
+	      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Add, memberValStr));
+	      		}else{
+	      			//if default security group not selected then
+	      			memberValStr = getAttributeValFromDepartment(dNum,"defaultGroups");
+			      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: memberOf set from defaults  "+key+ "  memberValStr :"+memberValStr);
+	      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Add, memberValStr));
+	      		}	
+      		}
+      	}
+
+		if(null == distinguishedName){
+      		distinguishedName = getADDistinguishedName(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The distinguishedName  Calculated in the Plan "+distinguishedName);
+		}
+		String pwdStr = null;
+		if(null == pwdStr){
+      		pwdStr = generateADPassword(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The pwdStr "+pwdStr);
+		}
+		
+		//Contractor changes 
+      	if(personaStatus.equalsIgnoreCase("CONTRACTOR") && isSAADepartment(dNum)){
+   			AccountRequest contractorAdAcctReq = new AccountRequest();
+   			contractorAdAcctReq.setApplication(STR_AD_APP_NAME);
+   			contractorAdAcctReq.setOperation(AccountRequest.Operation.Create);
+   			
+      		String contractorDn = getContractorDistinguishedName(context,targetIdentity,personaModel);
+      	
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount ::  contractorDn for CONTRACTORs "+contractorDn);
+	      	contractorAdAcctReq.setNativeIdentity(contractorDn);
+			
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount ::  Setting other attributes requests");
+			if(null !=sAMAccountName){
+					contractorAdAcctReq.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, targetIdentity.getFirstname()));
+			      	contractorAdAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, sAMAccountName));
+					contractorAdAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,sAMAccountName));
+					contractorAdAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,sAMAccountName));
+					contractorAdAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+					contractorAdAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+					contractorAdAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+				
+	     	}else{
+	     		contractorAdAcctReq.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, targetIdentity.getFirstname()));
+	      		// 07232019
+		      	contractorAdAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, spinForAD));
+				contractorAdAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,spinForAD));
+				contractorAdAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,spinForAD));
+				contractorAdAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+				contractorAdAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+				contractorAdAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+	      	
+	      	}
+	      	
+	      	//Buidling default group assignments
+	      	
+			HashMap saaContractorMap = null;
+			Custom saaCustom = context.getObjectByName(Custom.class, "Custom-SEN-ADAdditionalExceptions");
+			HashMap saaContractorMap = saaCustom.get("SAA-Contractors");//getExclusiveDeptMap();
+			if(null != saaContractorMap){
+				
+				List secGrpList = new ArrayList();
+				if(saaContractorMap.get("defaultSecurityGroup") instanceof List){
+					secGrpList.addAll(saaContractorMap.get("defaultSecurityGroup"));
+				}else{
+					secGrpList.add(saaContractorMap.get("defaultSecurityGroup"));
+				}				
+				if(null != secGrpList && secGrpList.size() >0){
+					exclusiveSecGroup = secGrpList.get(0);
+				}
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: CONTRACTOR exclusiveSecGroup "+exclusiveSecGroup);
+	      		
+	      		contractorAdAcctReq.add(new AttributeRequest("memberOf", ProvisioningPlan.Operation.Add, exclusiveSecGroup));
+			}
+			
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount ::  Contractor AccountRequest before returning is: " + contractorAdAcctReq.toXml());
+           
+      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: Exit");
+      
+			return 	contractorAdAcctReq;
+      	}
+
+      	//adAcctReq.setNativeIdentity(sAMAccountName);  //has to be done wiht DN
+        Map attributesMap = new HashMap();
+        attributesMap.put("comments","LCM Joiner Process Create AD");
+        attributesMap.put("flow","LCM Joiner");
+        attributesMap.put("interface","LCM");
+        attributesMap.put("operation","Create");
+        sailpoint.object.Attributes adAttrs = new sailpoint.object.Attributes(attributesMap);
+      	//adAcctReq.add(adAttrs);
+ 
+      	adAcctReq.setNativeIdentity(distinguishedName);
+      	
+      	//adAcctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+
+		//no DN required
+		//adAcctReq.add(new AttributeRequest("dn", ProvisioningPlan.Operation.Set,distinguishedName));
+      	
+      	if(null !=sAMAccountName){
+	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, sAMAccountName));
+			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,sAMAccountName));
+			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,sAMAccountName));
+			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+		//	adAcctReq.add(new AttributeRequest("msDS-PrincipalName", ProvisioningPlan.Operation.Set,upnString));
+      	}else{
+      		// 07232019
+	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, spinForAD));
+			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,spinForAD));
+			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,spinForAD));
+			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+		//  adAcctReq.add(new AttributeRequest("msDS-PrincipalName", ProvisioningPlan.Operation.Set,upnString));
+      	
+      	}
+ 	  		
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount ::  AccountRequest before returning is: " + adAcctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: Exit");
+          
+      return adAcctReq;
+      
+	}
+
+
+	public static AccountRequest createReactivateADAccount(SailPointContext context,Identity targetIdentity,Workflow workflow){
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: Enter");
+	  
+	  	AccountRequest adAcctReq = new AccountRequest();
+      	adAcctReq.setApplication(STR_AD_APP_NAME);
+      	adAcctReq.setOperation(AccountRequest.Operation.Create);
+      	
+      	String personaSPIN = null;
+		String personaStatus = null;
+      	HashMap personaModel = workflow.get("personaModel");
+
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: personaModel from WF is "+personaModel);
+
+		String dNum = null;
+		String exclusiveOU = null;
+		String exclusiveSecGroup = null;
+		String upnString = null;
+		dNum = targetIdentity.getAttribute("deptNumber");
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: dNum from targetIdentity is "+dNum);
+
+		if(null != targetIdentity){
+			personaStatus = targetIdentity.getAttribute("personaStatus");
+			if(Util.isEmpty(personaStatus)){
+				personaStatus = targetIdentity.getAttribute("formPersonaStatus");
+			}
+		}
+		
+		if(null == dNum){
+			dNum = personaModel.get("deptNum");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: dNum from identityModel is "+dNum);
+		}
+
+		//spinForAD is nothing but identity.name
+      	String identitySpin = personaModel.get("spin");
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: identitySpin "+identitySpin);
+      	//SEND 0916 org Team confirmed that no 3 Char Suffix
+      	String spinForAD = identitySpin; //identitySpin.substring(0,identitySpin.length()-3).trim();
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The spinForAD  is "+spinForAD);
+	    String sAMAccountName = null;
+	    String distinguishedName = null;
+		//SMASServerNamePrefix
+		String dnString = null;
+		String smasServerNamePrifix = null;
+		smasServerNamePrifix = getADAttributeFromDepartment(dNum,"SMASServerNamePrefix");
+		//smasServerNamePrifix = getAttributeValFromDepartment(dNum,"SMASServerNamePrefix");
+		if(null != smasServerNamePrifix){
+      		//sAMAccountName = spinForAD+smasServerNamePrifix;
+			sAMAccountName = generateADSAMAccountName(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The sAMAccountName  is "+sAMAccountName);
+			upnString = getADUserPrinciplaName(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The UPN  is "+upnString);
+      	}
+      
+        // Check if enable request is needed.
+        Map enableMap = checkIfEnableRequired(context, targetIdentity, personaModel);
+        
+        if(!Util.isEmpty(enableMap)){
+        	logger.debug("Enable map is NOT null" + enableMap);
+        	String enable=enableMap.get("enable");
+        	String dn = enableMap.get("distinguishedName");
+        	
+        	logger.debug("Enable Flag : "+enable);
+        	logger.debug("Distinguished Name : "+dn);	
+        	
+        	if(Util.isNotNullOrEmpty(enable) && Util.isNotNullOrEmpty(dn)){
+        		
+        		adAcctReq.setOperation(AccountRequest.Operation.Enable);
+        		adAcctReq.setNativeIdentity(distinguishedName);
+       	 		adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+       	 		adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+				adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+        		
+        		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: enablePlan returned "+adAcctReq.toXml());
+        	
+        		return adAcctReq;
+        		
+        	}
+        }
+    
+      
+      	HashMap createMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_CREATE_BR_ADACCOUNT);
+	  	Iterator it = createMap.entrySet().iterator();
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+        	
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	
+        	String dataValue=returnBlank(personaModel.get(key));
+        	
+        	if(Util.isNotNullOrEmpty(dataValue)){
+      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      		}
+      	
+      		
+      		if(key.equalsIgnoreCase("formDepartmentOu")){
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The distinguishedName  set thru form inputs pair.getValue() "+pair.getValue());
+      			//distinguishedName = pair.getValue();
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The distinguishedName  set thru form inputs  "+distinguishedName);
+      		}
+      		if(key.equalsIgnoreCase("formDepartmentSecGroup")){
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: memberOf set thru form inputs  "+key+ "  value :"+value);
+	        	String memberValStr = returnBlank(personaModel.get(key));
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: memberOf set thru form inputs  "+key+ "  memberValStr :"+memberValStr);
+	      		if(Util.isNotNullOrEmpty(memberValStr)){
+	      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Add, memberValStr));
+	      		}else{
+	      			//if default security group not selected then
+	      			memberValStr = getAttributeValFromDepartment(dNum,"defaultGroups");
+			      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: memberOf set from defaults  "+key+ "  memberValStr :"+memberValStr);
+	      			adAcctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Add, memberValStr));
+	      		}	
+      		}
+      	}
+
+		if(null == distinguishedName){
+      		distinguishedName = getADDistinguishedName(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The distinguishedName  Calculated in the Plan "+distinguishedName);
+		}
+		String pwdStr = null;
+		if(null == pwdStr){
+      		pwdStr = generateADPassword(context,targetIdentity,"Create");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The pwdStr "+pwdStr);
+		}
+		
+      	
+		 //Contractor changes for Reactivation case
+        if(personaStatus.equalsIgnoreCase("CONTRACTOR") && isSAADepartment(dNum)){
+		        AccountRequest contractorAdAcctReq = new AccountRequest();
+		        contractorAdAcctReq.setApplication(STR_AD_APP_NAME);
+		        contractorAdAcctReq.setOperation(AccountRequest.Operation.Create);
+		        
+		          String contractorDn = getContractorDistinguishedName(context,targetIdentity,personaModel);
+		        
+		          if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount ::  contractorDn for CONTRACTORs "+contractorDn);
+		          contractorAdAcctReq.setNativeIdentity(contractorDn);
+		      
+		      if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount ::  Setting other attributes requests");
+		      if(null !=sAMAccountName){
+		      		  contractorAdAcctReq.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, targetIdentity.getFirstname()));
+			      	  contractorAdAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, sAMAccountName));
+			          contractorAdAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,sAMAccountName));
+			          contractorAdAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,sAMAccountName));
+			          contractorAdAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			          contractorAdAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			          contractorAdAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+			        
+		        }else{
+		            contractorAdAcctReq.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, targetIdentity.getFirstname()));
+		            contractorAdAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, spinForAD));
+			        contractorAdAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,spinForAD));
+			        contractorAdAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,spinForAD));
+			        contractorAdAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			        contractorAdAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			        contractorAdAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+			          
+		          }
+		          
+		          //Buidling default group assignments
+		          
+		      HashMap saaContractorMap = null;
+		      Custom saaCustom = context.getObjectByName(Custom.class, "Custom-SEN-ADAdditionalExceptions");
+		      HashMap saaContractorMap = saaCustom.get("SAA-Contractors");//getExclusiveDeptMap();
+		      if(null != saaContractorMap){
+		        
+		        List secGrpList = new ArrayList();
+		        if(saaContractorMap.get("defaultSecurityGroup") instanceof List){
+		          secGrpList.addAll(saaContractorMap.get("defaultSecurityGroup"));
+		        }else{
+		          secGrpList.add(saaContractorMap.get("defaultSecurityGroup"));
+		        }       
+		        if(null != secGrpList && secGrpList.size() >0){
+		          exclusiveSecGroup = secGrpList.get(0);
+		        }
+		        if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: CONTRACTOR exclusiveSecGroup "+exclusiveSecGroup);
+		            
+		            contractorAdAcctReq.add(new AttributeRequest("memberOf", ProvisioningPlan.Operation.Add, exclusiveSecGroup));
+		      }
+		      
+		      if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount ::  Contractor AccountRequest before returning is: " + contractorAdAcctReq.toXml());
+		           
+		          if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: Exit");
+		      
+		      return  contractorAdAcctReq;
+        }
+
+      	//adAcctReq.setNativeIdentity(sAMAccountName);  //has to be done wiht DN
+        Map attributesMap = new HashMap();
+        attributesMap.put("comments","LCM Joiner Process Create AD");
+        attributesMap.put("flow","LCM Joiner");
+        attributesMap.put("interface","LCM");
+        attributesMap.put("operation","Create");
+        sailpoint.object.Attributes adAttrs = new sailpoint.object.Attributes(attributesMap);
+      	//adAcctReq.add(adAttrs);
+
+ 
+ 
+      	 adAcctReq.setNativeIdentity(distinguishedName);
+      	
+      	//adAcctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+
+		//no DN required
+		//adAcctReq.add(new AttributeRequest("dn", ProvisioningPlan.Operation.Set,distinguishedName));
+      	
+      	if(null !=sAMAccountName){
+	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, sAMAccountName));
+			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,sAMAccountName));
+			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,sAMAccountName));
+			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,sAMAccountName+"@org.usorg.dev"));
+			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+		//	adAcctReq.add(new AttributeRequest("msDS-PrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			
+      	}else{
+      		// 07232019
+	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, spinForAD));
+			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,spinForAD));
+			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,spinForAD));
+			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,spinForAD+"@org.usorg.dev"));
+			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
+			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
+			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
+		 //	adAcctReq.add(new AttributeRequest("msDS-PrincipalName", ProvisioningPlan.Operation.Set,upnString));
+      	
+      	}
+      	
+  	  		
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount ::  AccountRequest before returning is: " + adAcctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: Exit");
+          
+      return adAcctReq;
+      
+	}
+
+
+	public Map checkIfEnableRequired(SailPointContext context, Identity targetIdentity, Map personaModel){
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: checkIfEnableRequired :: Enter");
+    	Map returnMap = new HashMap();
+    	
+    	boolean isEnableReq = false;
+    	String emailFromUser = "";
+    	
+    	String deptNumFromUser="";
+    	if(null != targetIdentity){
+			deptNumFromUser = targetIdentity.getAttribute("deptNumber");
+		}
+		
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: checkIfEnableRequired :: deptNumFromUser "+deptNumFromUser);
+		
+		//dept from persona
+		String dNum = "";
+		if(null != targetIdentity){
+			dNum = personaModel.get("formDepartment");
+		}
+		
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: checkIfEnableRequired :: dNum from personaForm "+dNum);
+		
+		logger.debug("Check if already AD account exists");
+		IdentityService is = new IdentityService(context);
+		Application adApp = context.getObjectByName(Application.class,STR_AD_APP_NAME);
+		 List apps = new ArrayList();
+	     apps.add(adApp);
+		
+		boolean hasAcc = is.hasAccounts(targetIdentity,apps);
+		
+		if(hasAcc){
+			logger.debug("User already has existing Active Directory account. Check if mail domain is same");
+			String calculatedEmailString = "";
+			
+			if(Util.isNotNullOrEmpty(dNum)){
+				calculatedEmailString = getCalculatedADEmail(context,targetIdentity,dNum);
+			}else{
+				calculatedEmailString = getCalculatedADEmail(context,targetIdentity,deptNumFromUser);
+			}
+			
+			logger.debug("Calculated email for the account : "+calculatedEmailString);
+			
+			logger.debug("Now getting email from existing AD account");
+			List listOfLinks = new ArrayList();
+			
+			listOfLinks = is.getLinks(targetIdentity, adApp);
+			
+			// Can have more than one link
+			if(listOfLinks !=null && !listOfLinks.isEmpty()){
+				// Supporting multiple AD accounts, looping thru all links
+				
+				for(Link l : listOfLinks){
+					logger.debug("Checking on each link");
+					String emailFromLink="";
+					boolean isDisabled = false;
+					String dn = "";
+					
+					emailFromLink = l.getAttribute("mail");
+					isDisabled =l.isDisabled();
+					dn=l.getAttribute("distinguishedName");
+					
+					logger.debug("Email from the link : "+emailFromLink);
+					logger.debug("isDisabled : "+isDisabled);
+					logger.debug("native identity : "+dn);	
+					
+					if(Util.isNotNullOrEmpty(emailFromLink) && Util.isNotNullOrEmpty(calculatedEmailString) && isDisabled){
+						logger.debug("Calculated ou and email from link is NOT null and account is disabled, checking if they are equal");
+						if(emailFromLink.toLowerCase().equals(calculatedEmailString.toLowerCase())){
+							logger.debug("Existing email and new calculated email are same, this is enable case");
+							isEnableReq=true;
+							returnMap.put("enable","true");
+							returnMap.put("distinguishedName","true");
+							break;
+						}
+					}
+				}
+			}
+		}
+		
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: checkIfEnableRequired :: Exit "+returnMap);
+		return returnMap;
+	}
+	
+	public boolean isSAADepartment(String inDeptNumber){
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isSAADepartment :: Enter");
+      	boolean saaDept = false;
+      	if(Util.isNullOrEmpty(inDeptNumber)){
+      		saaDept = false;
+      	}else{
+	      	String departmentName = null;
+	      	departmentName = getDepartmentNameFromNumber(inDeptNumber);
+			Identity wgObj = getWGDeparmentObject(inDeptNumber);
+			String costCenter = ((Map)wgObj.getAttribute("extended1")).get("deptCostCenter");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isSAADepartment :: departmentName "+departmentName);
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isSAADepartment :: costCenter     "+costCenter);
+			if(costCenter.contains("OFCSAA") || costCenter.contains("SAA")){
+				saaDept = true;
+			}		
+      	}
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isSAADepartment :: saaDept "+saaDept);
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isSAADepartment :: Exit");
+      	return saaDept;
+		
+	}   
+    
+
+	public boolean isActiveDirectoryRequired(String inStatusName){
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: Enter");
+      	boolean reqFlag = false;
+      	Custom adObjConfig = context.getObjectByName(Custom.class, "Custom-SEN-PersonaSelections-Mapping");
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: inStatusName "+inStatusName);
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: adObjConfig "+adObjConfig);
+      	List allowedList =	adObjConfig.get("allowedStatusForAD");
+      	
+      	boolean inAllowedList = false;
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: Checking if persona is in the Custom Map");
+      	for(String str : allowedList ){
+      		logger.trace("String to check from custom object"+str);
+      		if(str.toLowerCase().equals(inStatusName.toLowerCase())){
+      			logger.trace("Persona Status is in the allowed list");
+      			inAllowedList=true;
+      			break; 
+      		}
+      	}
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: Persona is allowed "+inAllowedList);
+      	
+      	if(inAllowedList){
+      		reqFlag = true;
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: reqFlag "+reqFlag+" because persons status is "+inStatusName);
+      	}else{
+      		reqFlag = false;
+          	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: reqFlag "+reqFlag);
+      	}
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: reqFlag "+reqFlag);
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: isActiveDirectoryRequired :: Exit");
+      	return reqFlag;
+	}
+	
+	public String getADDNString(SailPointContext context, Identity identity, String op){
+		//String value for domain OU is domainOU
+		
+		logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: Enter ");
+        String distinguishedName = "";
+        String userDept = identity.getAttribute("deptNumber");
+		logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: userDept "+userDept);
+
+ 		String targetContainerOu = "";
+ 		String smasGalIdentifier = "";
+ 		
+        if(Util.isNotNullOrEmpty(userDept)){
+		 	targetContainerOu = getAttributeValFromDepartment(userDept,"domainOU");
+			logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: targetContainerOu "+targetContainerOu);
+
+		 	smasGalIdentifier = getAttributeFromDepartment(userDept,"SMASGALIdentifier");
+			logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: smasGalIdentifier "+smasGalIdentifier);
+
+			if(null != smasGalIdentifier && null != targetContainerOu){
+    			distinguishedName = "CN="+identity.getLastname()+", "+identity.getFirstname()+" ("+smasGalIdentifier+")"+","+targetContainerOu;
+			}else{
+    			distinguishedName = "CN="+identity.getLastname()+", "+identity.getFirstname()+","+targetContainerOu;
+			}
+			logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: distinguishedName "+distinguishedName);
+
+		    Application adApplication = context.getObjectByName(Application.class, APP_AD);
+ 			/*
+ 			String uniq = (String)isUniqueAttribute(adApplication,"distinguishedName",distinguishedName);
+ 			int k = 2;
+ 			while( uniq.equalsIgnoreCase("No") ){
+		    	logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: Return distinguishedName "+ distinguishedName);
+    			distinguishedName = "CN="+identity.getLastname()+", "+identity.getFirstname()+" "+k+" ("+smasGalIdentifier+")"+","+targetContainerOu;
+	    		uniq = (String)isUniqueAttribute(adApplication,"distinguishedName",distinguishedName);
+	    		k++;
+ 			}*/
+ 			
+        }
+		logger.info("RulesLibrary-SEN-ADFieldValue :: getADDNString :: Exit ");
+		return distinguishedName;
+    }
+
+
+	public static AccountRequest createPersona(SailPointContext context,Workflow workflow)
+	{
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: Enter");
+	    SimpleDateFormat validFormat = new SimpleDateFormat("MM/dd/yyyy hh:mm:ss aaa z");
+
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	acctReq.setOperation(AccountRequest.Operation.Create);
+      
+      	String personaSPIN = null;
+      	HashMap personaModel = workflow.get("personaModel");
+
+
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: personaModel from WF is "+personaModel);
+
+		String dNum = null;
+		//check formDepartment1 first
+		dNum = personaModel.get("formDepartment1");
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: dNum from personaModel.formDepartment1 is "+dNum);
+		
+		if(Util.isNullOrEmpty(dNum)){
+			dNum = personaModel.get("formDepartment");
+		    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: dNum from personaModel.formDepartment is "+dNum);
+			if(Util.isNullOrEmpty(dNum)){
+				dNum = identityModel.get("deptNum");
+		      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: dNum from identityModel is "+dNum);
+			}
+		}
+
+		String pStatus = null;
+		pStatus = personaModel.get("formPersonaStatus");
+	    if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: pStatus from personaModel is "+pStatus);
+		
+		if(null == pStatus){
+			pStatus = identityModel.get("personaStatus");
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: pTName from identityModel is "+pStatus);
+		}
+
+		Custom customObj = context.getObjectByName(Custom.class,"Custom-SEN-PersonaSelections-Mapping");
+		HashMap pMap = customObj.get("PersonaStatusMap");
+	    
+	    String nextAvailableSpin  = getSPINNextCounter();
+
+      	if(null != pStatus){
+      		//personaSPIN = nextAvailableSpin+pMap.get(pStatus);
+      		//SEND 0916 org Team decided to opt out in using the 3 Char suffix on the Identity.name
+      		//And only S01 and S02 suffix will be used to represent Secondary Personas with Primary Persona being SPIN 
+      		personaSPIN = nextAvailableSpin;
+      	}
+		
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: The personaSPIN  is "+personaSPIN);
+      
+      	HashMap createMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_CREATE_IDENTITY);
+      
+	  	Iterator it = createMap.entrySet().iterator();
+		
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: *** ACCOUNT REQUEST ***  KEY    VALUE     DATAVALUE");
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+        	
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	
+        	String dataValue=returnBlank(personaModel.get(key));
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: *** ACCOUNT REQUEST ***  "+key+"   "+value+"  "+dataValue);
+        	if("formDob".equalsIgnoreCase(key)){
+				if(null != dataValue){
+					acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+					if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: *** ACCOUNT REQUEST ***  SET DOB "+key+"   "+value+"  "+dataValue);
+				}
+			}else if ("formStartDate".equalsIgnoreCase(key)){
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: *** ACCOUNT REQUEST ***  SET START DATE "+key+"   "+value+"  "+dataValue);
+			}else if ("formEndDate".equalsIgnoreCase(key)){
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: *** ACCOUNT REQUEST ***  SET END DATE "+key+"   "+value+"  "+dataValue);
+			}else{
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+			}	
+      	}
+      	
+      	acctReq.setNativeIdentity(personaSPIN);
+      	
+      	workflow.put("personaSPIN",personaSPIN);
+
+      	acctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+      	
+      	workflow.put("identityName",personaSPIN); 
+      	
+      	//acctReq.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set,String.valueOf(personaSPIN))); // personaSPIN
+		acctReq.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set,personaSPIN));
+		acctReq.add(new AttributeRequest("spin", ProvisioningPlan.Operation.Set,nextAvailableSpin));
+        //acctReq.add(new AttributeRequest("identityNumber", ProvisioningPlan.Operation.Set,String.valueOf(personaSPIN))); // set identity number
+        acctReq.add(new AttributeRequest("identityNumber", ProvisioningPlan.Operation.Set,personaSPIN)); // set identity number
+        acctReq.add(new AttributeRequest("deptNumber", ProvisioningPlan.Operation.Set,dNum)); // set identity number
+        
+        acctReq.add(new AttributeRequest("personaType", ProvisioningPlan.Operation.Set,"Primary Persona")); // set identity number
+       	
+       	//acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,spFormat.parse(personaModel.get("formEndDate").toString())) ); 
+	    //acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,spFormat.parse(personaModel.get("formStartDate").toString())) ); 
+
+       	acctReq.add(new AttributeRequest("accessHours", ProvisioningPlan.Operation.Set,personaModel.get("formAccessHours")) ); // set identity number to childPersonaSPIN
+  	  	
+		//for Contractors
+		//if("Contractor".equalsIgnoreCase(pStatus)){
+		//	acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,personaModel.get("formCOR")) ); // set identity number to childPersonaSPIN
+		//	acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,personaModel.get("formPop")) ); // set identity number to childPersonaSPIN
+		//}
+		
+		if("Contractor".equalsIgnoreCase(personaModel.get("formPersonaStatus"))){
+			//for Contractors
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,personaModel.get("formPop")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,personaModel.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,personaModel.get("formCOR")) ); // set identity number to childPersonaSPIN
+		}else{
+			//For Staff and other
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+		}
+  	  	
+  	  		
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona ::  AccountRequest before returning is: " + acctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createPersona :: Exit");
+          
+      return acctReq;
+      
+}
+
+
+	public static AccountRequest createSecondaryPersona(SailPointContext context,Workflow workflow)
+	{
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: Enter");
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	acctReq.setOperation(AccountRequest.Operation.Create);
+      
+      	String childPersonaSpin = null;
+      	childPersonaSpin = workflow.get("childPersonaSpin");//getSPINNextCounter();
+      
+      
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: The childPersonaSpin  is "+childPersonaSpin);
+      
+      	HashMap personaModel=workflow.get("personaModel");
+
+      	if(null == childPersonaSpin){
+			Custom customObj = context.getObjectByName(Custom.class,"Custom-SEN-PersonaSelections-Mapping");
+			HashMap pMap = customObj.get("PersonaStatusMap");
+			String pTName = personaModel.get("formPersonaStatus");
+      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: pTName status is  "+pTName);
+
+      		String pPersonaName = personaModel.get("name");
+      		
+      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: pPersonaName from personaModel "+pPersonaName);
+
+			String subPersonaName = null;
+	
+			if(null != pPersonaName && pPersonaName.length() > 5){
+				subPersonaName =  pPersonaName;    //pPersonaName.substring(0, pPersonaName.length()-3);
+      			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: subPersonaName "+subPersonaName);
+
+	      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: childPersonaSpin pTName  is "+pTName);
+
+	      		childPersonaSpin = subPersonaName+pMap.get(pTName);
+	      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: childPersonaSpin recalculated  is "+childPersonaSpin);
+			}
+	
+
+      		//update the Primary
+      		try{
+	      		if(null != pPersonaName){
+	      			Identity pPersona = context.getObjectByName(Identity.class,pPersonaName);
+	      			if(null != pPersona){
+	      				ArrayList secList = new ArrayList();
+	      				String pType = pPersona.getAttribute("personaType");
+	      				String spListString = pPersona.getAttribute("secondaryPersona");
+				      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: Parent Persona pType "+pType+ " list of secondary "+spListString);
+	      				if(pType.equals("Primary Persona")){
+	      					if(null != spListString){
+	      						pPersona.setAttribute("secondaryPersona",spListString+","+childPersonaSpin);
+						      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: secondaryPersona string  : "+spListString+ ","+childPersonaSpin);
+	      					}else{
+	      						pPersona.setAttribute("secondaryPersona",childPersonaSpin);
+						      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: secondaryPersona string  : "+childPersonaSpin);
+	      					}	
+	      				}
+				      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: updating Parent Persona ");
+						context.saveObject(pPersona);
+						context.commitTransaction();
+						context.decache(pPersona);
+				      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: Updated Parent Persona ");
+	      				
+	      			}
+	      		}
+      		}catch(Exception pe){
+      			logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: "+pe.getMessage());
+      		}
+      		
+      		
+      	}
+
+      
+      	HashMap createMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_CREATE_SECONDARY_IDENTITY);
+      
+	  	Iterator it = createMap.entrySet().iterator();
+		
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+        	
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: form field values :: "+key+" = "+value);
+
+        	String dataValue=returnBlank(personaModel.get(key));
+        	
+      		acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      	}
+
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: setNativeIdentity  is "+childPersonaSpin);
+      	
+      	acctReq.setNativeIdentity(childPersonaSpin);
+      	
+      	workflow.put("personaSPIN",childPersonaSpin);
+
+      	acctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+      	
+      	workflow.put("identityName",childPersonaSpin); // setting identityName in case of Identity Create
+      	
+      	if(null != childPersonaSpin){
+      		acctReq.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set,childPersonaSpin) ); // childPersonaSPIN
+        	acctReq.add(new AttributeRequest("identityNumber", ProvisioningPlan.Operation.Set,childPersonaSpin) ); // set identity number to childPersonaSPIN
+	        acctReq.add(new AttributeRequest("personaType", ProvisioningPlan.Operation.Set,"Secondary Persona")); // set identity number
+			acctReq.add(new AttributeRequest("spin", ProvisioningPlan.Operation.Set,childPersonaSpin.substring(0, childPersonaSpin.length()-3)));
+	        
+     		acctReq.add(new AttributeRequest(STR_ROLE_ATTR, ProvisioningPlan.Operation.Set, STR_BIRTHRIGHT_ROLE)); // BirthRight Role
+  	  	}	
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona ::  AccountRequest before returning is: " + acctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createSecondaryPersona :: Exit");
+          
+      return acctReq;
+      
+	}
+
+
+
+
+
+	public static AccountRequest createTransferPersona(SailPointContext context,Workflow workflow)
+	{
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: Enter");
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	acctReq.setOperation(AccountRequest.Operation.Create);
+
+		
+      	HashMap transferPersonaMap= workflow.get("personaModel");
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: transferPersonaMap from wf "+transferPersonaMap);
+
+     	String pPersonaName = transferPersonaMap.get("tSpin");
+      	String toSpin = pPersonaName.substring(0,pPersonaName.length()-3);
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: tSpin from transferPersonaMap "+pPersonaName);
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: toSpin from transferPersonaMap "+toSpin);
+
+     	String pPersonaStatus = transferPersonaMap.get("tPersonaStatus");
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: pPersonaStatus from transferPersonaMap "+pPersonaStatus);
+      
+      	String transferPersonaSpin = null;
+
+		Custom customObj = context.getObjectByName(Custom.class,"Custom-SEN-PersonaSelections-Mapping");
+		HashMap pMap = customObj.get("PersonaStatusMap");
+		String pTName = transferPersonaMap.get("tPersonaStatus");
+
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: pTName from personaModel "+pTName);
+
+		//here we need to check new persona status
+		if("Staff".equals(pPersonaStatus)){
+			transferPersonaSpin = getUniquePersonaName(pPersonaName);
+     		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: transferPersonaSpin for same Staff "+transferPersonaSpin);
+		}else{
+			if(null != pPersonaName && pPersonaName.length() > 5){
+				//SEND 0916
+				//String subPersonaSpin = pPersonaName.substring(0, pPersonaName.length()-3);
+				String subPersonaSpin = pPersonaName;
+	     		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: subPersonaSpin "+subPersonaSpin);
+	      		transferPersonaSpin = subPersonaSpin+pMap.get(pTName);
+	      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: childPersonaSpin recalculated  is "+transferPersonaSpin);
+			}
+		}
+
+      	HashMap createTransferMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_TRANSFER_IDENTITY);
+	  	Iterator it = createTransferMap.entrySet().iterator();
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: TRANSFER :: form field values :: "+pair.getKey()+" = "+pair.getValue());
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	String dataValue=returnBlank(personaModel.get(key));
+      		acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      	}
+
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: setNativeIdentity  is "+transferPersonaSpin);
+      	
+      	acctReq.setNativeIdentity(transferPersonaSpin);
+      	
+      	workflow.put("personaSPIN",transferPersonaSpin);
+      	workflow.put("identityName",transferPersonaSpin); // setting identityName in case of Identity Create
+
+      	acctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+      	
+      	
+      	if(null != transferPersonaSpin){
+      		acctReq.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set,transferPersonaSpin) ); // childPersonaSPIN
+      		acctReq.add(new AttributeRequest("identityName", ProvisioningPlan.Operation.Set,transferPersonaSpin) ); // childPersonaSPIN
+        	acctReq.add(new AttributeRequest("identityNumber", ProvisioningPlan.Operation.Set,transferPersonaSpin) ); // set identity number to childPersonaSPIN
+
+        	acctReq.add(new AttributeRequest("firstname", ProvisioningPlan.Operation.Set,transferPersonaMap.get("tFirstName")) ); // set identity number to childPersonaSPIN
+        	acctReq.add(new AttributeRequest("lastname", ProvisioningPlan.Operation.Set,transferPersonaMap.get("tLastName")) ); // set identity number to childPersonaSPIN
+        	acctReq.add(new AttributeRequest("preferredFirstname", ProvisioningPlan.Operation.Set,transferPersonaMap.get("preferredFirstname")) ); // set identity number to childPersonaSPIN
+        	acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set,transferPersonaMap.get("tPersonaStatus")) ); // set identity number to childPersonaSPIN
+
+        	//acctReq.add(new AttributeRequest("deptNumber", ProvisioningPlan.Operation.Set,toDept) ); // set identity number to childPersonaSPIN
+        	acctReq.add(new AttributeRequest("spin", ProvisioningPlan.Operation.Set,toSpin) ); // set identity number to childPersonaSPIN
+        	//SEND 0916
+	        //acctReq.add(new AttributeRequest("personaType", ProvisioningPlan.Operation.Set,"Secondary Persona")); // set identity number
+  	  	}	
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona ::  AccountRequest before returning is: " + acctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createTransferPersona :: Exit");
+          
+      return acctReq;
+      
+	}
+
+	public static AccountRequest createReactivateIdentityPlan(SailPointContext context,Workflow workflow)
+	{
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: Enter");
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	//acctReq.setOperation(AccountRequest.Operation.Create);
+      	acctReq.setOperation(AccountRequest.Operation.Enable);
+		
+      	HashMap reactivatePersonaMap = workflow.get("personaModel");
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: reactivatePersonaMap from wf "+reactivatePersonaMap);
+		//formSpin is the field in the form
+     	String toSpin = reactivatePersonaMap.get("spin");
+     	
+     	if(null == toSpin){
+     		toSpin = workflow.get("personaSPIN");
+	     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: toSpin from WF personaSPIN "+toSpin);
+     	}else{
+	     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: toSpin from reactivatePersonaMap "+toSpin);
+     	}
+     	
+
+     	String pPersonaStatus = reactivatePersonaMap.get("formPersonaStatus");
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: pPersonaStatus from reactivatePersonaMap "+pPersonaStatus);
+      
+
+		//here we need to check new persona status
+		if(null != toSpin){
+      		workflow.put("reactivatePersonaSpin",toSpin );
+      		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: reactivatePersonaSpin recalculated  is "+toSpin);
+		}
+
+      	HashMap createReactivateMap = getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_REACTIVATE_IDENTITY);
+	  	Iterator it = createReactivateMap.entrySet().iterator();
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: REACTIVATE :: form field values :: "+pair.getKey()+" = "+pair.getValue());
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	String dataValue=returnBlank(personaModel.get(key));
+        	if("formDob".equalsIgnoreCase(key)){
+				if(null != dataValue){
+					acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+					if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: *** ACCOUNT REQUEST ***  SET DOB "+key+"   "+value+"  "+dataValue);
+				}
+			}else if ("formStartDate".equalsIgnoreCase(key)){
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: *** ACCOUNT REQUEST ***  SET START DATE "+key+"   "+value+"  "+dataValue);
+			}else if ("formEndDate".equalsIgnoreCase(key)){
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(dataValue)));
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: *** ACCOUNT REQUEST ***  SET END DATE "+key+"   "+value+"  "+dataValue);
+			}else{
+				acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+			}
+			
+      		//acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      	}
+
+
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: setNativeIdentity  is "+toSpin);
+
+		String tDepartment = reactivatePersonaMap.get("formDepartment");
+     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: tDepartment from personaModel "+tDepartment);
+
+		String toDept = null;
+
+		if(null == tDepartment){
+			toDept = reactivatePersonaMap.get("formDepartment1");
+	     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: tDepartmentName from personaModel "+toDept);
+
+		    if(null == toDept){
+		    	//get requestors dept
+		    	toDept = workflow.get("reqDept");
+		     	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: toDept from WF "+toDept);
+		    	
+		    }
+		}else{
+			toDept = tDepartment;
+		}
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: toDept set "+toDept);
+
+      	
+      	acctReq.setNativeIdentity(toSpin);
+      	
+      	workflow.put("personaSPIN",toSpin);
+      	workflow.put("identityName",toSpin); // setting identityName in case of Identity Create
+
+      	acctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+      	
+      	
+      	if(null != toSpin){
+      		//using old for now pPersonaName instead of reactivatePersonaSpin
+      		acctReq.add(new AttributeRequest("identityName", ProvisioningPlan.Operation.Set,toSpin) ); // childPersonaSPIN
+      		acctReq.add(new AttributeRequest("inactive", ProvisioningPlan.Operation.Set,false) ); // childPersonaSPIN
+
+        	acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formPersonaStatus")) ); // set identity number to childPersonaSPIN
+        	//acctReq.add(new AttributeRequest("eid", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("eid")) ); // set identity number to childPersonaSPIN
+        	//start and end dates are handled in the main loop
+			//acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formStartDate")) ); 
+			//acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formEndDate")) ); 
+
+			// set identity number to childPersonaSPIN
+        	acctReq.add(new AttributeRequest("spin", ProvisioningPlan.Operation.Set,toSpin) ); // set identity number to childPersonaSPIN
+	        acctReq.add(new AttributeRequest("personaType", ProvisioningPlan.Operation.Set,"Primary Persona")); // set identity number
+	        
+	        if(null != toDept){
+	        	acctReq.add(new AttributeRequest("deptNumber", ProvisioningPlan.Operation.Set,toDept)); // set identity number
+	        }
+			acctReq.add(new AttributeRequest("extended3", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("isState")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("smartCard", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("needSmartCard")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("suffix", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formSuffix")) ); // set identity number to childPersonaSPIN
+		    acctReq.add(new AttributeRequest("accessHours", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formAccessHours")) ); 
+
+			if("Contractor".equalsIgnoreCase(reactivatePersonaMap.get("formPersonaStatus"))){
+				//for Contractors
+				acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formPop")) ); // set identity number to childPersonaSPIN
+				acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+				acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formCOR")) ); // set identity number to childPersonaSPIN
+			}else{
+				//For Staff and other
+				acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+			}
+  	  	}	
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan ::  ACCOUNT REQUEST GENERATED " + acctReq.toXml());
+           
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateIdentityPlan :: Exit");
+          
+      return acctReq;
+      
+	}
+
+	public static AccountRequest generateReactivateUpdatePlanForBMS32(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: Enter");
+		
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+		
+		AccountRequest acctReq = new AccountRequest();
+		acctReq.setApplication(STR_BMS32_APP_NAME);
+		acctReq.setOperation(AccountRequest.Operation.Enable);
+
+		HashMap reactivatePersonaMap = workflow.get("personaModel");
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: reactivatePersonaMap from wf "+reactivatePersonaMap);
+		 
+		 Link adAppLink=getSafeLink(context,identity,STR_BMS32_APP_NAME); 
+		 String nativeId =  adAppLink.getNativeIdentity();
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: app nativeId "+nativeId);
+		 if(Util.isNullOrEmpty(nativeId)){
+		 	nativeId = (String)identity.getAttribute("spin");
+		 }
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: app nativeIdentity "+nativeId);
+		 
+		 acctReq.setNativeIdentity(nativeId);
+
+		 
+		 String newDeptNumber= (String)identity.getAttribute("deptNumber");
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 ::  newDeptNumber "+newDeptNumber);
+		 String newStatus= (String)identity.getAttribute("personaStatus");
+    
+		 acctReq.add(new AttributeRequest("DeptID", ProvisioningPlan.Operation.Set, newDeptNumber));
+		 acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set, newStatus));
+		 //acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set, newStatus));
+		 
+		 //Added new Nov 19 2019
+		 acctReq.add(new AttributeRequest("firstname", ProvisioningPlan.Operation.Set,identity.getFirstname()) ); 
+		 acctReq.add(new AttributeRequest("lastname", ProvisioningPlan.Operation.Set,identity.getLastname()) ); 
+		 acctReq.add(new AttributeRequest("middleName", ProvisioningPlan.Operation.Set,identity.getAttribute("middleName")) ); 
+		 
+		 acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,identity.getAttribute("startDate")) ); 
+		 acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,identity.getAttribute("endDate")) ); 
+		 acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set,identity.getAttribute("dob")) ); 
+		 
+		 acctReq.add(new AttributeRequest("preferredFirstname", ProvisioningPlan.Operation.Set,identity.getAttribute("preferredFirstname")) ); 
+		 acctReq.add(new AttributeRequest("extended5", ProvisioningPlan.Operation.Set,identity.getAttribute("extended5")) ); 
+		 acctReq.add(new AttributeRequest("email", ProvisioningPlan.Operation.Set,identity.getAttribute("email")) ); 
+		 // for Agency this was out in 2020 PATH
+		 //acctReq.add(new AttributeRequest("extended1", ProvisioningPlan.Operation.Set,identity.getAttribute("extended1")) ); 
+		
+		acctReq.add(new AttributeRequest("extended3", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("isState")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("smartCard", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("needSmartCard")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("suffix", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formSuffix")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("accessHours", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formAccessHours")) ); 
+		if("Contractor".equalsIgnoreCase(reactivatePersonaMap.get("formPersonaStatus"))){
+			//for Contractors
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formPop")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,reactivatePersonaMap.get("formCOR")) ); // set identity number to childPersonaSPIN
+		}else{
+			//For Staff and other
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+		}         
+    
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: ACCOUNT REQUEST GENERATED : " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateReactivateUpdatePlanForBMS32 :: Exit");
+          
+      return acctReq;
+      
+    }
+
+
+	public static AccountRequest generateCreatePlanForBMS32(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: Enter");
+		
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+		
+		AccountRequest acctReq = new AccountRequest();
+		acctReq.setApplication(STR_BMS32_APP_NAME);
+		acctReq.setOperation(AccountRequest.Operation.Create);
+
+		HashMap createPersonaMap = workflow.get("personaModel");
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: createPersonaMap from wf "+createPersonaMap);
+		 
+		 Link adAppLink=getSafeLink(context,identity,STR_BMS32_APP_NAME); 
+		 String nativeId =  adAppLink.getNativeIdentity();
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: app nativeId "+nativeId);
+		 if(Util.isNullOrEmpty(nativeId)){
+		 	nativeId = (String)identity.getAttribute("spin");
+		 }
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: app nativeIdentity "+nativeId);
+		 
+		 acctReq.setNativeIdentity(nativeId);
+
+		 
+		 String newDeptNumber= (String)identity.getAttribute("deptNumber");
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 ::  newDeptNumber "+newDeptNumber);
+		 String newStatus= (String)identity.getAttribute("personaStatus");
+    
+		 acctReq.add(new AttributeRequest("spin", ProvisioningPlan.Operation.Set, nativeId));
+		 acctReq.add(new AttributeRequest("DeptID", ProvisioningPlan.Operation.Set, newDeptNumber));
+		 acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set, newStatus));
+		 //acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set, newStatus));
+		 
+		 //Added new Nov 19 2019
+		 acctReq.add(new AttributeRequest("firstname", ProvisioningPlan.Operation.Set,identity.getFirstname()) ); 
+		 acctReq.add(new AttributeRequest("lastname", ProvisioningPlan.Operation.Set,identity.getLastname()) ); 
+		 acctReq.add(new AttributeRequest("middleName", ProvisioningPlan.Operation.Set,identity.getAttribute("middleName")) ); 
+
+		 //acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formStartDate").toString())));
+		 //acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formEndDate").toString())));
+		 //acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formDob").toString())));
+		 
+		 acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,identity.getAttribute("startDate")) ); 
+		 acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,identity.getAttribute("endDate")) ); 
+		 acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set,identity.getAttribute("dob")) ); 
+		 
+		 acctReq.add(new AttributeRequest("preferredFirstname", ProvisioningPlan.Operation.Set,identity.getAttribute("preferredFirstname")) ); 
+		 acctReq.add(new AttributeRequest("extended5", ProvisioningPlan.Operation.Set,identity.getAttribute("extended5")) ); 
+		 acctReq.add(new AttributeRequest("email", ProvisioningPlan.Operation.Set,identity.getAttribute("email")) ); 
+		 // for Agency this was out in 2020 PATH
+		 //acctReq.add(new AttributeRequest("extended1", ProvisioningPlan.Operation.Set,identity.getAttribute("extended1")) ); 
+		
+		acctReq.add(new AttributeRequest("extended3", ProvisioningPlan.Operation.Set,createPersonaMap.get("isState")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("smartCard", ProvisioningPlan.Operation.Set,createPersonaMap.get("needSmartCard")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("suffix", ProvisioningPlan.Operation.Set,createPersonaMap.get("formSuffix")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("accessHours", ProvisioningPlan.Operation.Set,createPersonaMap.get("formAccessHours")) ); 
+		if("Contractor".equalsIgnoreCase(createPersonaMap.get("formPersonaStatus"))){
+			//for Contractors
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,createPersonaMap.get("formPop")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,createPersonaMap.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,createPersonaMap.get("formCOR")) ); // set identity number to childPersonaSPIN
+		}else{
+			//For Staff and other
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+		}         
+    
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: ACCOUNT REQUEST GENERATED : " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateCreatePlanForBMS32 :: Exit");
+          
+      return acctReq;
+      
+    }
+
+
+	public static AccountRequest generateModifyIdentityPlanForBMS32(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: Enter");
+		
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+		
+		AccountRequest acctReq = new AccountRequest();
+		acctReq.setApplication(STR_BMS32_APP_NAME);
+		acctReq.setOperation(AccountRequest.Operation.Modify);
+
+		HashMap modifyPersonaMap = workflow.get("personaModel");
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: modifyPersonaMap from wf "+modifyPersonaMap);
+		 
+		 Link adAppLink=getSafeLink(context,identity,STR_BMS32_APP_NAME); 
+		 String nativeId =  adAppLink.getNativeIdentity();
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: app nativeId "+nativeId);
+		 if(Util.isNullOrEmpty(nativeId)){
+		 	nativeId = (String)identity.getAttribute("spin");
+		 }
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: app nativeIdentity "+nativeId);
+		 
+		 acctReq.setNativeIdentity(nativeId);
+
+		 
+		 String newDeptNumber= (String)identity.getAttribute("deptNumber");
+		 if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 ::  newDeptNumber "+newDeptNumber);
+		 String newStatus= (String)modifyPersonaMap.get("formPersonaStatus");
+    
+		 acctReq.add(new AttributeRequest("personaStatus", ProvisioningPlan.Operation.Set, newStatus));
+		 
+		 //Added new Nov 19 2019
+		 acctReq.add(new AttributeRequest("firstname", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formFirstName")) ); 
+		 acctReq.add(new AttributeRequest("lastname", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formLastName")) ); 
+		 acctReq.add(new AttributeRequest("middleName", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formMiddleName")) ); 
+		 //DATE FORMATS
+		 acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formStartDate").toString())));
+		 acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formEndDate").toString())));
+		 acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formDob").toString())));
+
+		 //acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set,identity.getAttribute("dob")) ); 
+		 //acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formStartDate")) ); 
+		 //acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formEndDate")) ); 
+		 acctReq.add(new AttributeRequest("preferredFirstname", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("preferredFirstname")) ); 
+		 acctReq.add(new AttributeRequest("extended5", ProvisioningPlan.Operation.Set,identity.getAttribute("extended5")) ); 
+		 //acctReq.add(new AttributeRequest("email", ProvisioningPlan.Operation.Set,identity.getAttribute("email")) ); 
+		 // for Agency this was out in 2020 PATH
+		 //acctReq.add(new AttributeRequest("extended1", ProvisioningPlan.Operation.Set,identity.getAttribute("extended1")) ); 
+		
+		acctReq.add(new AttributeRequest("extended3", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("isState")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("smartCard", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("needSmartCard")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("suffix", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formSuffix")) ); // set identity number to childPersonaSPIN
+		acctReq.add(new AttributeRequest("accessHours", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formAccessHours")) ); 
+		if("Contractor".equalsIgnoreCase(modifyPersonaMap.get("formPersonaStatus"))){
+			//for Contractors
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formPop")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formCOR")) ); // set identity number to childPersonaSPIN
+		}else{
+			//For Staff and other
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+		}         
+    
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: ACCOUNT REQUEST GENERATED : " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: generateModifyIdentityPlanForBMS32 :: Exit");
+          
+      return acctReq;
+      
+    }
+
+	public static AccountRequest createIdentity(SailPointContext context,Workflow workflow) {
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createIdentity :: Enter");
+	  
+	  	AccountRequest acctReq = new AccountRequest();
+      	acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+      	acctReq.setOperation(AccountRequest.Operation.Create);
+      
+      	int identityNumber=generateIdentityNumber();
+      
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createIdentity :: The Identity number is"+identityNumber);
+      
+      	HashMap identityModel=workflow.get("identityModel");
+      
+      	HashMap createMap=getCustomValue(context,STR_IDENTITY_CUSTOM_OBJECT,STR_CREATE_IDENTITY);
+      
+	  	Iterator it = createMap.entrySet().iterator();
+		
+    	while (it.hasNext()) {
+        	Map.Entry pair = (Map.Entry)it.next();
+        	
+        	String key=pair.getKey();
+        	String value=pair.getValue();
+        	
+        	String dataValue=returnBlank(identityModel.get(key));
+        	
+      		acctReq.add(new AttributeRequest(value, ProvisioningPlan.Operation.Set, dataValue));
+      	}
+      	
+      	acctReq.setNativeIdentity(String.valueOf(identityNumber));
+      	
+      	workflow.put("identityModel",String.valueOf(identityNumber));
+      	acctReq.add(new AttributeRequest("status", ProvisioningPlan.Operation.Set,STR_IDEN_ACTIVE_STATUS)); // set status
+      	
+      	workflow.put("identityName",String.valueOf(identityNumber)); // setting identityName in case of Identity Create
+      	acctReq.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set,String.valueOf(identityNumber))); // BirthRight Role
+        acctReq.add(new AttributeRequest("identityNumber", ProvisioningPlan.Operation.Set,String.valueOf(identityNumber))); // set identity number
+	    //   acctReq.add(new AttributeRequest(STR_ROLE_ATTR, ProvisioningPlan.Operation.Set, STR_BIRTHRIGHT_ROLE)); // BirthRight Role
+  	  		
+  	  	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createIdentity :: AccountRequest before returning is: " + acctReq.toXml());
+      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createIdentity :: Exit");
+          
+    	return acctReq;
+      
+	}
+
+	public static AccountRequest generateNameChangePlanForNCD(SailPointContext context,Workflow workflow){
+		  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateNameChangePlanForNCD :: Enter");
+		  
+		  AccountRequest acctReq = new AccountRequest();
+	      acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+	      acctReq.setOperation(AccountRequest.Operation.Modify);
+	      
+	      HashMap changedAttrMap=workflow.get("changedAttrMap"); 
+	      if(!Util.isEmpty(changedAttrMap)){
+				Iterator it = changedAttrMap.entrySet().iterator();
+				while (it.hasNext()){
+					Map.Entry pair = (Map.Entry)it.next();
+					String key=pair.getKey();
+					String value=pair.getValue();
+					if(key.equals("deptNumber")){   
+						if(Util.isNotNullOrEmpty(value)){     	
+							acctReq.add(new AttributeRequest(key, ProvisioningPlan.Operation.Set, value));
+						}	
+					}else{
+						acctReq.add(new AttributeRequest(key, ProvisioningPlan.Operation.Set, value));
+					}	
+				}
+		  }
+	          
+	  	  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateNameChangePlanForNCD ::  AccountRequest before returning is: " + acctReq.toXml());
+	           
+	      if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: generateNameChangePlanForNCD :: Exit");
+	          
+	      return acctReq;
+	      
+	}
+
+
+	public static AccountRequest updateIdentity(SailPointContext context,Workflow workflow){
+		  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: updateIdentity :: Enter");
+		  
+		  AccountRequest acctReq = new AccountRequest();
+	      acctReq.setApplication(ProvisioningPlan.APP_IIQ);
+	      acctReq.setOperation(AccountRequest.Operation.Modify);
+	      
+	      HashMap changedAttrMap=workflow.get("changedAttrMap"); 
+	      HashMap modifyPersonaMap = workflow.get("personaModel");
+	      Iterator it = changedAttrMap.entrySet().iterator();
+			
+	    	while (it.hasNext()) 
+	    	{
+	        	Map.Entry pair = (Map.Entry)it.next();
+	        	
+	        	String key=pair.getKey();
+	        	String value=pair.getValue();
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: updateIdentity :: key "+key+ " value  : "+value);
+	        	if(key.equals("deptNumber")){   
+	        		if(Util.isNotNullOrEmpty(value)){     	
+	      				acctReq.add(new AttributeRequest(key, ProvisioningPlan.Operation.Set, value));
+	      			}	
+	      		}else{
+	      			acctReq.add(new AttributeRequest(key, ProvisioningPlan.Operation.Set, value));
+	      		}	
+	      	}
+			acctReq.add(new AttributeRequest("dob", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formDob").toString())));
+			acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formStartDate").toString())));
+			acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set, convertSpDateToStandardFormat(modifyPersonaMap.get("formEndDate").toString())));
+
+			acctReq.add(new AttributeRequest("firstname", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formFirstName")) ); 
+			acctReq.add(new AttributeRequest("lastname", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formLastName")) ); 
+			acctReq.add(new AttributeRequest("middleName", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formMiddleName")) ); 
+			//acctReq.add(new AttributeRequest("startDate", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formStartDate")) ); 
+			//acctReq.add(new AttributeRequest("endDate", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formEndDate")) ); 
+			
+		if("Contractor".equalsIgnoreCase(modifyPersonaMap.get("formPersonaStatus"))){
+			//for Contractors
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formPop")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("contractorCo", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formContractorCompany")) ); // set identity number to childPersonaSPIN
+			acctReq.add(new AttributeRequest("cotrIdentity", ProvisioningPlan.Operation.Set,modifyPersonaMap.get("formCOR")) ); // set identity number to childPersonaSPIN
+		}else{
+			//For Staff and other
+			acctReq.add(new AttributeRequest("popLevel", ProvisioningPlan.Operation.Set,"NA") ); // set identity number to childPersonaSPIN
+		}         
+    			
+			
+	          
+	  	  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: AccountRequest before returning is: " + acctReq.toXml());
+	           
+	      if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: updateIdentity :: Exit");
+	          
+	      return acctReq;
+	      
+	}
+
+	public static startWorkFlow(SailPointContext context,String requesterId,String workflowName,String caseName,String identityName,String strActionStatus,int millSecond) throws GeneralException
+	{
+			if(logger.isDebugEnabled()) logger.debug("Enter startWorkFlow  rule for column name: ");
+			
+		    Workflow eventWorkflow = context.getObject(Workflow.class, workflowName);
+				if (null == eventWorkflow) {
+					if(logger.isDebugEnabled()) logger.debug("Could not find a workflow named: " + workflowName);
+					throw new GeneralException("Invalid worklfow: " + workflowName);
+				}
+
+				// Simulate the request being submitted by a user. Default: spadmin.
+				Identity id = context.getObjectByName(Identity.class, requesterId);
+				if (null == id) {
+					if(logger.isDebugEnabled()) logger.debug("Could not find a requester Identity: " + requesterId);
+					throw new GeneralException("Invalid identity: " + requesterId);
+				}
+
+				// Ask the Request Processor to start the workflow 10000 miliseconds(10 sec) from now.
+				// Append the time stamp to the workflow case name to ensure it's unique. 
+				long launchTime = System.currentTimeMillis() + millSecond;
+				caseName = caseName + " (" + launchTime + ")";
+
+				// Build out a map of arguments to pass to the Request Scheduler.
+				Attributes reqArgs = new Attributes();
+				reqArgs.put(StandardWorkflowHandler.ARG_REQUEST_DEFINITION,sailpoint.request.WorkflowRequestExecutor.DEFINITION_NAME);
+				reqArgs.put(StandardWorkflowHandler.ARG_WORKFLOW,workflowName);
+				reqArgs.put(StandardWorkflowHandler.ARG_REQUEST_NAME,caseName);
+				reqArgs.put("requestName", caseName);
+				//reqArgs.put("plan", plan);
+
+				// Build a map of arguments to pass to the Workflow case when it launches.
+				Attributes wfArgs = new Attributes();
+				wfArgs.put("identityName", identityName);
+				wfArgs.put("workflow",  eventWorkflow.getId());
+				wfArgs.put("requester", requesterId);
+				wfArgs.put("eventName", strActionStatus);
+				
+				if(logger.isDebugEnabled()) logger.debug("The  strActionStatus inside is: " + strActionStatus);
+				
+				wfArgs.put("source",          STR_WKFL_SOURCE);
+				wfArgs.put("flow",            STR_WKFL_REQUEST_TYPE);
+				wfArgs.put("approvalScheme",  STR_WKFL_NONE); // This disables approvals for removals.
+				wfArgs.put("foregroundProvisioning",STR_WKFL_FALSE);
+
+				reqArgs.putAll(wfArgs);
+
+				// Use the Request Launcher to schedule the workflow reqeust.  This requires
+				// a Request object to store the properties of the request item.
+				Request req = new Request();
+				RequestDefinition reqdef = context.getObject(RequestDefinition.class,STR_WKFL_REQUEST_NAME);
+				req.setDefinition(reqdef);
+				req.setEventDate(new Date(launchTime));
+				req.setOwner(id);
+				req.setName(caseName);
+				req.setAttributes(reqdef, reqArgs );
+
+				// Schedule the work flow via the request manager.
+				RequestManager.addRequest(context, req);
+			
+	}	
+
+
+    public String aggregateReactivatedIdentityWithBadge(SailPointContext context,String accountName){
+		// Initialize the error message to nothing.
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Enter");
+		String errorMessage = "";
+		
+		// We need some values defined to know which account we want to aggregate.
+		String applicationName = STR_BADGE_HISTORY_APP_NAME;
+		
+		// We have already validated all of the arguments.  No just load the objects.
+		Application appObject = context.getObjectByName(Application.class, applicationName);
+        Application appCopy = (Application) appObject.deepCopy(context);  
+
+		String appConnName = appCopy.getConnector();
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: "+applicationName+" uses connector "+appConnName );
+
+		sailpoint.connector.Connector appConnector = (sailpoint.connector.Connector)sailpoint.connector.ConnectorFactory.getConnector(appCopy, null);
+
+		if (null == appConnector) {
+		   errorMessage = "Failed to construct an instance of connector [" + appConnName + "]";
+		   return errorMessage;
+		}
+ 
+		ResourceObject rObj = null;
+		try {
+	       
+	       CloseableIterator iterator = appConnector.iterateObjects(Connector.TYPE_ACCOUNT, Filter.eq("spin", accountName), null);  
+	       if(null != iterator){
+	            while(iterator.hasNext()){
+	                ResourceObject accObj = (ResourceObject)iterator.next();  
+	                if("account".equalsIgnoreCase(accObj.getObjectType().trim()) ){
+			    		logger.info("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: accObj "+accObj.toXml());
+	                }
+	            }    
+		   }
+		   //rObj = (ResourceObject) appConnector.getObject(Connector.TYPE_ACCOUNT, accountName, null);
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: rObj "+rObj.toXml());
+		} catch (sailpoint.connector.ObjectNotFoundException onfe) {
+		   errorMessage = "Connector could not find account: [" + accountName + "]";
+		   errorMessage += " in application  [" + applicationName + "]";
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: errorMessage "+errorMessage);
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Exception  "+onfe);
+		   return "Error";
+		}
+		
+		if (null == rObj) {
+		   errorMessage = "ERROR: Could not get ResourceObject for account: " + accountName;
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: errorMessage "+errorMessage);
+		   return errorMessage;
+		} 
+
+		Rule customizationRule = appObject.getCustomizationRule();
+		if (null != customizationRule) {
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Customization rule found for applicaiton  "+applicationName);
+		   
+		   try {
+		      // Pass the mandatory arguments to the Customization rule for the app.
+		      HashMap ruleArgs = new HashMap();
+		      ruleArgs.put("context",context);
+		      ruleArgs.put("log",logger);
+		      ruleArgs.put("object",rObj);
+		      ruleArgs.put("application",appObject);
+		      ruleArgs.put("connector",appConnector);
+		      ruleArgs.put("state",new HashMap());
+		   
+		      // Call the customization rule just like a normal aggregation would.
+		      ResourceObject newRObj = context.runRule(customizationRule, ruleArgs, null);
+		      
+		      // Make sure we got a valid resourceObject back from the rule.  
+		      if (null != newRObj) {
+		         rObj = newRObj;
+				 if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Got post-customization resourceObject:  "+rObj.toXml());
+		      }    
+		      
+		   }catch (Exception ex) {
+		      // Swallow any customization rule errors, the show must go on!
+			  if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Got post-customization resourceObject :: Error while running Customization rule for  "+ex.getMessage());
+		   }  
+		}
+
+
+		// Next we perform a miniature "Aggregation" using IIQ's built in Aggregator.
+		// Create an arguments map for the aggregation task. 
+		// To change this (if you need to), the map contains aggregation options and is the same as the 
+		// arguments to the acocunt aggregation tasks.  Some suggestied defaults are:
+		Attributes argMap = new Attributes();
+		argMap.put("promoteAttributes","true");
+		argMap.put("correlateEntitlements","false");
+		argMap.put("noOptimizeReaggregation","true");  // Note: Set to false to disable re-correlation.
+		
+		// Consturct an aggregator instance.
+		Aggregator agg = new Aggregator(context, argMap);
+		if (null == agg) {
+		   errorMessage = "Null Aggregator returned from constructor.  Unable to Aggregate!";
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: errorMessage "+errorMessage);
+		   return errorMessage;
+		}
+		
+		// Invoke the aggregation task by calling the aggregate() method.
+		// Note: the aggregate() call may take serveral seconds to complete.
+		log.debug("Calling aggregate() method... ");
+		TaskResult taskResult = agg.aggregate(appObject, rObj);
+		log.debug("aggregation complete.");
+		
+		if (null == taskResult) {
+		   errorMessage = "ERROR: Null taskResult returned from aggregate() call.";
+		   if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: errorMessage"+errorMessage );
+		   return errorMessage;
+		}
+
+    
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: aggregateReactivatedIdentityWithBadge :: Exit");
+    	return ("Success");
+    }
+
+	public static List createNameChnagePlan(SailPointContext context,String identityName){
+	  
+		if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createNameChnagePlan :: Enter");
+		
+		Identity identity = context.getObjectByName(Identity.class, identityName);
+		 
+		ArrayList accntLst=new ArrayList();
+		
+		 AccountRequest acctReq = new AccountRequest();
+		 acctReq.setApplication(STR_AD_APP_NAME);
+		 acctReq.setOperation(AccountRequest.Operation.Modify);
+		 
+		 Link adAppLink=getSafeLink(context,identity,STR_AD_APP_NAME); 
+		 
+		 acctReq.setNativeIdentity(adAppLink.getNativeIdentity());
+		 
+		 //String strADEmail="@org.com";
+		  
+		 // strADEmail=getFV_Active_Directory_mail_Rule(context,ident,"MODIFY");
+		 // String mailNickName="firstname.lastname";
+		 String newSAMAccountName=(String)generateADSAMAccountName(context,identity,"Update");
+		 //  getFV_Active_Directory_mailNickname_Rule(context,ident,"MODIFY");
+		 String firstName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_FIRSTNAME);
+		 String lastName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_LASTNAME);
+		 String displayName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_DISPLAYBLE_NAME);
+		 String mailNickName=getADMailNickname(context, identity,"Update");
+        
+     	 String newDNVal=getADDistinguishedName(context, identity,"Update");
+      	 //  (String)getFV_Active_Directory_distinguishedName_Rule(context,ident,"Modify");
+		 //  acctReq.addArgument("preferredServer","prefferedServer");
+    
+  		 List attrs = new ArrayList();
+         attrs.add(new AttributeRequest("givenName", ProvisioningPlan.Operation.Set, firstName));
+         attrs.add(new AttributeRequest("sn", ProvisioningPlan.Operation.Set, lastName));
+         //attrs.add(new AttributeRequest("name", ProvisioningPlan.Operation.Set, displayName));
+         //attrs.add(new AttributeRequest("distinguishedName", ProvisioningPlan.Operation.Set, newDNVal)); 
+         attrs.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set, newSAMAccountName));
+         attrs.add(new AttributeRequest("mailNickName", ProvisioningPlan.Operation.Set, mailNickName));
+
+        
+		 //  attrs.add(new AttributeRequest("proxyAddresses", ProvisioningPlan.Operation.Set, strProxyAddress));
+		 //  attrs.add(new AttributeRequest("mail", ProvisioningPlan.Operation.Set, strADEmail));
+		 //  attrs.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set, strUserPrincipalName));  
+		 //  attrs.add(new AttributeRequest("homeDirectory", ProvisioningPlan.Operation.Set, strHomeDirectory));   
+		attrs.add(new AttributeRequest("DomainController", ProvisioningPlan.Operation.Set,STR_DEFAULT_DOMAINCONTROLLER)); 
+    
+     	acctReq.addAll(attrs);
+    
+     	accntLst.add(acctReq);
+  
+  		List attrReqs = new ArrayList();
+            
+		updateADDNNameFields(adAppLink.getNativeIdentity(), newDNVal, attrReqs); // function to calculate Attribute param for 
+			
+		if (attrReqs != null && attrReqs.size() > 0) {			
+			/*Iterator attIterator = attrReqs.iterator();
+          	while (attIterator.hasNext()) {
+                AttributeRequest attRequest=attIterator.next();
+                if(attRequest.getName().equalsIgnoreCase("AC_NewName")){
+                    acctReq.add(attRequest);
+                }
+            }*/
+      		acctReq.addAll(attrReqs);
+		}
+			      
+        accntLst.add(acctReq);
+    		
+  	  	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createNameChnagePlan :: before returning is: " + acctReq.toXml());
+           
+      	if(ilogger.isDebugEnabled()) ilogger.debug("RulesLibrary-SEN-Identity :: createNameChnagePlan :: Exit");
+          
+      return accntLst;
+      
+    }
+
+	//Possible input attr values are 
+	//SMASGALIdentifier 
+	//SMASServerNamePrefix
+	//domainOU
+	
+	public String getADAttributeFromDepartment(String inDeptNum,String attrName){
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: Enter");
+
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: inDeptNum "+inDeptNum);
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: attrName "+attrName);
+
+		HashMap adOuMapObj = null;
+		ArrayList expDeptOus = new ArrayList();
+		String returnAttrValue = null;
+		if(null !=inDeptNum){
+			adOuMapObj = getExceptionDeparmentMap(inDeptNum);
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: adOuMapObj "+adOuMapObj);
+			returnAttrValue = adOuMapObj.get(attrName);
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: returnAttrValue "+returnAttrValue);
+		}
+		
+
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getADAttributeFromDepartment :: Exit");
+		return returnAttrValue;
+	}	
+
+
+	public Map getExceptionDeparmentMap(String inDeptNum){
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: Enter");
+		Custom senExceptionDeptStructureMap = context.getObjectByName(Custom.class, "Custom-SEN-ExceptionsDepartment-Hierarchy");
+		Map senExceptionDeptMap = senExceptionDeptStructureMap.get("ExceptionDepartmentHierarchy");
+		
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: inDeptNum "+inDeptNum);
+
+		HashMap adMapObj = null;
+		ArrayList expDeptOus = new ArrayList();
+		String qDeptName = null;
+		if (null != senExceptionDeptMap){
+			String deptName = senExceptionDeptMap.get(inDeptNum);
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: deptName "+deptName);
+			if(null != deptName){
+				qDeptName = deptName.substring(deptName.indexOf(":")+1,deptName.length())+":("+inDeptNum+")";
+				if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: qDeptName "+qDeptName);
+			}
+		}
+		if(null !=qDeptName){
+			Identity deptWG = context.getObjectByName(Identity.class,qDeptName);
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: deptWG "+deptWG.getName());
+			adMapObj =deptWG.getAttribute("extended2");
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: adMapObj "+adMapObj);
+		}else{
+			//no exception dept found but inDeptNum
+			Identity deptWGObj = getWGDeparmentObject(inDeptNum);
+			adMapObj = deptWGObj.getAttribute("extended2");
+			if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: adMapObj from getWGDeparmentObject "+adMapObj);
+		}
+		
+
+		if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: getExceptionDeparmentMap :: Exit");
+		return adMapObj;
+	}	
+
+	public String GetEmailFromIdentityName(String idName){
+		
+		logger.debug("RulesLibrary-SEN-Identity :: GetEmailFromIdentityName :: Enter");
+		
+		Identity id = context.getObjectByName(Identity.class, idName); 
+		logger.debug("RulesLibrary-SEN-Identity :: id :: " + id);
+		
+		String email = id.getAttribute("email").toString();
+		logger.debug("RulesLibrary-SEN-Identity :: email :: " + email);
+		
+		logger.debug("RulesLibrary-SEN-Identity :: GetEmailFromIdentityName :: Exit");
+		return email;
+	}    
+
+   
+	]]></Source>
+</Rule>

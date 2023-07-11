@@ -1,0 +1,407 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Workflow PUBLIC "sailpoint.dtd" "sailpoint.dtd">
+<!-- <Workflow explicitTransitions="true" name="Workflow-SEN-LeanJoiner" type="LCMProvisioning"> -->
+<Workflow name="Workflow-SEN-LeanJoiner" libraries="Identity,LCM" >
+  <Variable input="true" name="quickLinkIdentityId"/>
+  <Variable input="true" name="inputLastName"/>
+  <Variable input="true" name="inputFirstName"/>
+  <Variable input="true" name="inputDob"/>
+  
+  
+  <Variable initializer="CreatePersona" input="true" name="eventName">
+    <Description>eventName.</Description>
+  </Variable>
+  <Variable initializer="N100" input="true" name="personaSPIN">
+    <Description>eventName.</Description>
+  </Variable>
+  
+  <Variable name="effectiveDate"/>
+  <Variable name="fileParameters"/>
+  <Variable name="requesterCommnets"/>
+  
+  <Variable name="workflowParams"/>
+  
+  <Variable name="identityName">
+    <Description>The name of the identity</Description>
+    <Script>
+      <Source><![CDATA[
+	          import sailpoint.object.Identity;
+	          
+			  if(quickLinkidentityId!=null) {
+			     Identity iden = context.getObjectById(Identity.class,quickLinkIdentityId);
+			     return iden.getName();
+			  }
+	      ]]></Source>
+    </Script>
+  </Variable>
+  
+  <Variable name="idenName">
+    <Description>Name of the identity as initially passed. Its required for Create vs Update scenario</Description>
+    <Script>
+      <Source><![CDATA[
+	          import sailpoint.object.Identity;
+	          
+			  if(null != quickLinkidentityId) {
+			     Identity iden = context.getObjectById(Identity.class,quickLinkIdentityId);
+			     return iden.getName();
+			  }
+	      ]]></Source>
+    </Script>
+  </Variable>
+  <Variable initializer="true" name="trace">
+    <Description>
+	      Used for debugging this workflow and when set to true trace
+	      will be sent to stdout.
+	    </Description>
+  </Variable>
+  <Variable initializer="CreatePersonaRequest" name="flow">
+    <Description>
+      The name of the LCM flow that launched this workflow.
+
+      This is one of these two values:
+
+      IdentityCreateRequest
+      IdentityEditRequest
+    </Description>
+  </Variable>
+  <Variable initializer="true" name="doRefresh">
+    <Description>
+	     decide whether to refresh Identity or not
+	    </Description>
+  </Variable>
+
+  <Variable initializer="false" name="transient">
+    <Description>
+        Set to false to cause workflow-related objects, such as approval
+        work items, to be saved in the database even if they are only
+        viewed by the person registering.
+      </Description>
+  </Variable>
+
+  <Variable input="true" name="launcher">
+    <Description>launcher.</Description>
+  </Variable>
+  <Variable initializer="string:LCM" name="source">
+    <Description>The name of the identity.</Description>
+  </Variable>
+  
+  <!-- <Variable initializer="script:resolveDisplayName(identityName)" input="true" name="identityDisplayName"> -->
+  
+  <Variable initializer="script:resolveDisplayName(identityName)" name="identityDisplayName">
+    <Description>
+	      The displayName of the identity being updated.
+	      Query for this using a projection query and fall back to the name.
+	    </Description>
+  </Variable>
+  <Variable initializer="false" name="foregroundProvisioning"/>
+  <Variable name="provStatus">
+    <Description>Provisioning Status.</Description>
+  </Variable>
+  <Variable name="provErrorLst">
+    <Description>Provisioning error List.</Description>
+  </Variable>
+  <Variable name="plan"/>
+  <Variable name="adPlan"/>
+  
+  <Variable name="project"/>
+  <Variable name="identityModel"/>
+  <Variable name="personaModel"/>
+  <Variable name="formNameRequired"/>
+  <Variable name="formNameConfirm"/>
+  
+  
+  <Variable name="reqAuthority"/>
+  <Variable name="launcherCapability"/>
+  <Variable initializer="string:No" name="needIdBadge"/>
+  <!--  -->
+  <Variable name="triggerSunrise"/>
+
+  <Variable name="oneStepReqId"/>
+
+  
+  <Variable initializer="" name="successTo"/>
+  <Variable initializer="" name="failureTo"/>
+  
+  <Variable initializer="" name="successTemplate"/>
+  <Variable initializer="" name="failureTemplate"/>
+  <Variable initializer="true" name="updateStandardPostProvEmails"/>
+  <Variable initializer="false" name="updateStandardPostApproveEmails"/>
+  
+  <Variable name="exitWorkflow">
+    <Description>
+         Value posted by the "Exit Workflow" form button, to indicate the workflow should end.
+         This is somethign handled in transitions on Approvals that have forms and gives
+         a way for customers to exit the workflow.
+       </Description>
+  </Variable>  
+  
+  <Description>
+		This is the deployment framework's standard LCE EmailChange WF 
+  </Description>
+  <RuleLibraries>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Utils"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Identity"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-CreatePersona"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-CONF-CreatePersona"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Departments"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-SearchFeature"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-PluginUtils"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-ADFieldValue"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Workgroups"/>
+    <Reference class="sailpoint.object.Rule" name="RulesLibrary-SEN-Notifications"/>
+    
+    
+    <!-- All SP FW rules are in RulesLibrary sp folder -->
+    <Reference class="sailpoint.object.Rule" name="SP Provisioning Rules Library"/>
+    <Reference class="sailpoint.object.Rule" name="SP Role Assigment Rule Library"/>
+    <Reference class="sailpoint.object.Rule" name="SP Attr Synch Rules Library"/>
+    <Reference class="sailpoint.object.Rule" name="SPCONF Common Rules Library"/>
+    <Reference class="sailpoint.object.Rule" name="SPCONF Attr Synch Rules Library"/>
+    
+  </RuleLibraries>
+  <Step icon="Start" name="Start" posX="2" posY="135">
+    <Transition to="Build Persona Model"/>
+  </Step>
+  
+  <Step action="call:getIdentityModel" icon="Task" name="Build Persona Model" posX="186" posY="10" resultVariable="personaModel">
+    <Arg name="identityName" value="ref:personaSPIN"/>
+    <Transition to="Initialize"/>
+  </Step>
+ 
+  <Step icon="Start" name="Initialize" posX="2" posY="135">
+    <Script>
+      <Source><![CDATA[
+        import java.util.HashMap;
+        import java.util.Iterator;
+        import java.util.Map.Entry;
+        import java.util.ArrayList;
+        import sailpoint.tools.Util;
+        import sailpoint.object.WorkflowCase;
+		import java.util.UUID;
+
+        import sailpoint.object.Identity;
+        import org.apache.commons.logging.Log;
+		import org.apache.commons.logging.LogFactory;
+		
+		private static Log logger = LogFactory.getLog("org.workflow.CreatePersona");
+		
+        logger.warn("Workflow-SEN-LeanJoiner :: The Identity Model is " + personaModel);
+        
+        logger.warn("Workflow-SEN-LeanJoiner ::  The eventName is " + eventName);
+        logger.warn("Workflow-SEN-LeanJoiner ::  The launcher is " + launcher);
+       
+		personaSPIN = workflow.get("personaSPIN");
+		
+		logger.warn("Workflow-SEN-LeanJoiner :: The Requestor identity is " + identityName);
+		
+		reqAuthority = determineRequestorAuthority(identityName);
+		logger.warn("Workflow-SEN-LeanJoiner ::  The  reqAuthority is " + reqAuthority);
+		launcherCapability = determineRequestorAuthority(identityName);
+		logger.warn("Workflow-SEN-LeanJoiner :: The  launcherCapability is " + launcherCapability);
+		workflow.put("reqAuthority", "reqAuthority");
+		workflow.put("launcherCapability", "launcherCapability");
+		
+		
+
+		//logger.warn("Workflow-SEN-LeanJoiner :: workflow name is  " + workflow);
+
+		//if(Util.isNullOrEmpty(oneStepReqId)){
+		//	WorkflowCase currentWorkflowCase = wfcontext.getRootWorkflowCase();
+		//	logger.warn("Workflow-SEN-LeanJoiner :: Initialize :: currentWorkflowCase "+currentWorkflowCase);
+		//	if(null != currentWorkflowCase.getId()){
+		//		String rid = currentWorkflowCase.getId();
+		//		oneStepReqId = UUID.nameUUIDFromBytes(rid.getBytes()).toString();
+		//	}
+		//}
+		
+		if(Util.isNullOrEmpty(oneStepReqId)){
+			oneStepReqId = "N100";
+		}
+
+		logger.warn("Workflow-SEN-LeanJoiner :: oneStepReqId " + oneStepReqId);
+		
+		   
+        ]]></Source>
+    </Script>
+    <Transition to="Create Slim Inputs Form"/>
+  </Step>
+
+ 
+  <Step icon="Approval" name="Create Slim Inputs Form" posX="175" posY="21">
+    <Description>This step is used update user that no email change is required for selected user</Description>
+    <Approval mode="serial" name="Create Persona Form" owner="ref:launcher" return="personaModel,needIdBadge,requesterCommnets,targetDeptSelected" send="launcherCapability,personaModel,needIdBadge,inputLastName">
+      <Arg name="workItemType" value="string:Form"/>
+      <Arg name="personaSPIN" value="ref:personaSPIN"/>
+      <Arg name="identityName" value="ref:identityName"/>
+      <Arg name="launcherCapability" value="ref:launcherCapability"/>
+      <Arg name="identityDisplayName" value="ref:identityDisplayName"/>
+      <Arg name="launcher" value="ref:launcher"/>
+      <Arg name="workItemDescription" value="string:Create Identity Request by $(launcher)"/>
+      <Arg name="workItemFormBasePath" value="personaModel"/>
+      <Arg name="workItemForm" value="Form-SEN-LeanJoiner-IdentityInputs"/>
+    </Approval>
+   	<Transition to="Build Persona Creation Plan" when="script:(approved)" />
+    
+  </Step>
+
+  <Step action="call:addMessage" name="Exit On Manual Work Items" posX="364" posY="107">
+    <Arg name="message" value="Failed due to manual work item(s)"/>
+    <Arg name="type" value="Error" />
+    <Transition to="end"/>
+  </Step>
+
+
+   
+
+  <Step icon="Default" name="Build Persona Creation Plan" posX="2" posY="135" resultVariable="plan">
+    <Description>Build Persona Creation Plan.</Description>
+    <Script>
+      <Source><![CDATA[
+        import java.util.ArrayList;
+        import java.util.Random;
+        import sailpoint.object.ProvisioningResult;
+        import sailpoint.object.Identity;
+        import sailpoint.object.ProvisioningPlan.AccountRequest;  
+        import sailpoint.object.ProvisioningPlan.AttributeRequest;
+        import org.apache.commons.logging.Log;
+		import org.apache.commons.logging.LogFactory;
+		
+		private static Log logger = LogFactory.getLog("org.workflow.CreatePersona");
+        logger.warn("org.workflow.CreatePersona");
+        ProvisioningPlan plan = workflow.get("plan");
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the plan is "+plan);
+		
+		if (plan == null){
+			plan = new ProvisioningPlan();
+		}
+		
+		String identityName = workflow.get("personaSPIN");
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the identityName is "+identityName);
+
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the personaModel is "+personaModel);
+
+		if(null !=personaModel){
+			workflow.put("personaModel",personaModel);
+		}
+		personaSPIN =workflow.get("personaSPIN");
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the personaSPIN is"+personaSPIN);
+
+		
+		ArrayList accntLst=new ArrayList();
+		
+		AccountRequest iiqAccountRequest =null;
+		
+		if(STR_CREATE_IDENTITY.equalsIgnoreCase(eventName)) {
+		    //For IIQ Cube Creation
+			iiqAccountRequest = createPersona(context,workflow);
+			logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the iiqAccountRequest is"+iiqAccountRequest);
+			if(null == personaSPIN || personaSPIN.equalsIgnoreCase("N100") ){
+				personaSPIN = iiqAccountRequest.getNativeIdentity();
+				logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: personaSPIN from account request native identity "+personaSPIN);
+			}	
+		}
+		
+		if(null != iiqAccountRequest){
+		  accntLst.add(iiqAccountRequest);
+		}
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: THE SPIN IS "+personaSPIN);
+		
+		plan.setAccountRequests(accntLst);
+		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the plan is "+plan.toXml());
+
+		if(null !=personaSPIN && !personaSPIN.equalsIgnoreCase("N100")){
+			logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: Identity from Plan "+plan.getIdentity());
+		}
+		
+		//Before return the plan set triggerSunrise
+		
+		
+		return plan;
+		]]></Source>
+    </Script>
+    <Transition to="Schedule Sunrise For Slim Create"/> 
+
+  </Step>
+
+ 
+ 
+  <Step name="Schedule Sunrise For Slim Create" action="call:scheduleWorkflowEvent"> 
+		<Arg name="workflow" value="Workflow-SEN-ScheduledLeanJoiner"/>
+		<Arg name="requestName">
+		    <Script>
+		        <Source>
+		          String endUserName = null;
+		          endUserName = personaModel.get("formLastName")+" "+personaModel.get("formFirstName");
+		          return("Scheduled Create Identity for :"+endUserName+ " submitted by :"+identityDisplayName);
+		        </Source>
+		    </Script>
+		</Arg>
+	    <Arg name="scheduleDelaySeconds">
+	      <Script>
+	        <Source><![CDATA[
+	
+		          import java.util.Date;
+		          import sailpoint.tools.Util;
+				  import java.text.ParseException;
+				  import java.text.SimpleDateFormat;
+		          import org.apache.commons.logging.Log;
+				  import org.apache.commons.logging.LogFactory;
+				  import java.util.Calendar;
+		          
+		          private static Log flogger = LogFactory.getLog("org.rulelibraries");
+				  //yyyy-MM-dd hh:mm:ss.SSS
+				  SimpleDateFormat dateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss Z yyyy");
+				  Date todayDate = new Date();
+	
+				  Calendar thisCalendar = Calendar.getInstance();
+		          thisCalendar.setTime(todayDate);
+		       	  thisCalendar.add(Calendar.SECOND, 300);
+		          Date currentDate = thisCalendar.getTime();
+		          long delaySeconds = 5;
+	              flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: currentDate "+currentDate);
+
+
+                  long currentLongVal = currentDate.getTime();
+	              flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: currentLongVal "+currentLongVal);
+				  long scheduledLongVal = 0;
+				  
+		    	  Date parsedStartDate = null;
+		    	  
+		    	  if(null != personaModel.get("formStartDate")){
+			    	  parsedStartDate = dateFormat.parse(personaModel.get("formStartDate").toString());
+	                  flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: parsedStartDate "+parsedStartDate);
+	                  scheduledLongVal = parsedStartDate.getTime();
+	                  flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: scheduledLongVal "+scheduledLongVal);
+			      }
+	   			  //if(null != parsedStartDate){
+	   			  //	  delaySeconds = Util.computeDifferenceMilli(parsedStartDate,todayDate); 
+		          //    flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: Seconds to Delay for start date "+delaySeconds);
+	   			  //}
+	   			  if(scheduledLongVal > currentLongVal){
+	    	          delaySeconds = scheduledLongVal-currentLongVal;
+	   			  }else{
+	    	          delaySeconds = 1;
+	   			  }
+	   			  
+	              flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: delaySeconds from calcFutureTime "+delaySeconds);
+	   			  
+		          return delaySeconds;
+	]]></Source>
+	      </Script>
+	    </Arg>		
+		<Arg name="quickLinkIdentityId" value="ref:launcher"/>
+		<Arg name="eventName" value="string:CreatePersona"/>
+		<Arg name="launcher" value="ref:launcher"/>
+		<Arg name="owner" value="ref:launcher"/>
+		<Arg name="personaSPIN" value="ref:personaSPIN"/>
+		<Arg name="personaModel" value="ref:personaModel"/>
+		<Arg name="plan" value="ref:plan"/>
+		<Arg name="identityName" value="ref:launcher"/>
+		<Arg name="idenName" value="ref:launcher"/>
+		<Arg name="identityDisplayName" value="ref:identityDisplayName"/>
+       <Transition to="end"/>
+   </Step>
+ 
+ 
+  <Step icon="Stop" name="end"/>
+</Workflow>
