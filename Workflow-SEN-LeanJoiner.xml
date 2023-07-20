@@ -359,7 +359,6 @@
  
  
   <Step name="Schedule Sunrise For Slim Create" action="call:scheduleWorkflowEvent"> 
-
 	      <Script>
 	        <Source><![CDATA[
 	
