@@ -18,7 +18,7 @@
   <Variable name="effectiveDate"/>
   <Variable name="fileParameters"/>
   <Variable name="requesterCommnets"/>
-  
+   
   <Variable name="workflowParams"/>
   
   <Variable name="identityName">
@@ -183,7 +183,7 @@
         import org.apache.commons.logging.Log;
 		import org.apache.commons.logging.LogFactory;
 		
-		private static Log logger = LogFactory.getLog("org.workflow.CreatePersona");
+		private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");
 		
         logger.warn("Workflow-SEN-LeanJoiner :: The Identity Model is " + personaModel);
         
@@ -198,7 +198,7 @@
 		logger.warn("Workflow-SEN-LeanJoiner ::  The  reqAuthority is " + reqAuthority);
 		launcherCapability = determineRequestorAuthority(identityName);
 		logger.warn("Workflow-SEN-LeanJoiner :: The  launcherCapability is " + launcherCapability);
-		workflow.put("reqAuthority", "reqAuthority");
+		workflow.put("reqAuthority", reqAuthority);
 		workflow.put("launcherCapability", "launcherCapability");
 		
 		
@@ -266,8 +266,8 @@
         import org.apache.commons.logging.Log;
 		import org.apache.commons.logging.LogFactory;
 		
-		private static Log logger = LogFactory.getLog("org.workflow.CreatePersona");
-        logger.warn("org.workflow.CreatePersona");
+		private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");
+        logger.warn("senate.workflow.CreatePersona");
         ProvisioningPlan plan = workflow.get("plan");
 		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the plan is "+plan);
 		
@@ -307,6 +307,39 @@
 		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: THE SPIN IS "+personaSPIN);
 		
 		plan.setAccountRequests(accntLst);
+
+        // Create a temporary identity object
+    Identity identity = new Identity();
+
+    List accounts = plan.getAccountRequests();
+    String fname;
+    String lname;
+    String spin;
+    String deptNumber;
+
+    for ( AccountRequest account : accounts ) {
+      fname = (String) account.getAttributeRequest("firstname").getValue().toString().toUpperCase();
+      lname = (String) account.getAttributeRequest("lastname").getValue().toString().toUpperCase();
+      spin = (String) account.getAttributeRequest("spin").getValue().toString().toUpperCase();
+      deptNumber = (String) account.getAttributeRequest("deptNumber").getValue().toString().toUpperCase();
+    }
+
+   
+    // Set the necessary attributes for the identity
+    identity.setAttribute("firstname",fname); // Set the identity name or any other required attributes
+    identity.setAttribute("lastname",lname);
+    identity.setAttribute("spin",spin);
+    identity.setName(spin);
+    identity.setAttribute("deptNumber", deptNumber);
+    //context.saveObject(identity);
+    //context.commitTransaction();
+    // look up identity object
+   
+    
+    // Set the identity on the plan
+    plan.setIdentity(identity);
+
+
 		logger.warn("Workflow-SEN-LeanJoiner :: Build Persona Creation Plan :: the plan is "+plan.toXml());
 
 		if(null !=personaSPIN && !personaSPIN.equalsIgnoreCase("N100")){
@@ -326,17 +359,7 @@
  
  
   <Step name="Schedule Sunrise For Slim Create" action="call:scheduleWorkflowEvent"> 
-		<Arg name="workflow" value="Workflow-SEN-ScheduledLeanJoiner"/>
-		<Arg name="requestName">
-		    <Script>
-		        <Source>
-		          String endUserName = null;
-		          endUserName = personaModel.get("formLastName")+" "+personaModel.get("formFirstName");
-		          return("Scheduled Create Identity for :"+endUserName+ " submitted by :"+identityDisplayName);
-		        </Source>
-		    </Script>
-		</Arg>
-	    <Arg name="scheduleDelaySeconds">
+
 	      <Script>
 	        <Source><![CDATA[
 	
@@ -348,7 +371,7 @@
 				  import org.apache.commons.logging.LogFactory;
 				  import java.util.Calendar;
 		          
-		          private static Log flogger = LogFactory.getLog("org.rulelibraries");
+		          private static Log flogger = LogFactory.getLog("senate.rulelibraries");
 				  //yyyy-MM-dd hh:mm:ss.SSS
 				  SimpleDateFormat dateFormat = new SimpleDateFormat("E MMM dd HH:mm:ss Z yyyy");
 				  Date todayDate = new Date();
@@ -377,7 +400,7 @@
 	   			  //	  delaySeconds = Util.computeDifferenceMilli(parsedStartDate,todayDate); 
 		          //    flogger.warn("Workflow-SEN-LeanJoiner :: Schedule Sunrise For Lean Joiner :: Seconds to Delay for start date "+delaySeconds);
 	   			  //}
-	   			  if(scheduledLongVal > currentLongVal){
+	   			  if(scheduledLongVal @gt currentLongVal){
 	    	          delaySeconds = scheduledLongVal-currentLongVal;
 	   			  }else{
 	    	          delaySeconds = 1;
@@ -388,20 +411,406 @@
 		          return delaySeconds;
 	]]></Source>
 	      </Script>
-	    </Arg>		
-		<Arg name="quickLinkIdentityId" value="ref:launcher"/>
-		<Arg name="eventName" value="string:CreatePersona"/>
-		<Arg name="launcher" value="ref:launcher"/>
-		<Arg name="owner" value="ref:launcher"/>
-		<Arg name="personaSPIN" value="ref:personaSPIN"/>
-		<Arg name="personaModel" value="ref:personaModel"/>
-		<Arg name="plan" value="ref:plan"/>
-		<Arg name="identityName" value="ref:launcher"/>
-		<Arg name="idenName" value="ref:launcher"/>
-		<Arg name="identityDisplayName" value="ref:identityDisplayName"/>
-       <Transition to="end"/>
+
+       <Transition to="Provision"/>
    </Step>
+
+  
+   <Step icon="Task" name="Provision" posX="1184" posY="126">
+    <Arg name="flow" value="ref:flow"/>
+    <Arg name="identityName" value="ref:idenName"/>
+    <Arg name="plan" value="ref:plan"/>
+    <Arg name="notificationScheme" value="none"/>
+    <Arg name="approvalMode" value="serial"/>
+    <Arg name="approvalScheme" value="none"/>
+    <Arg name="doRefresh" value="ref:doRefresh"/>
+    <Arg name="policyScheme" value="none"/>
+    <Arg name="trace" value="ref:trace"/>
+    <Arg name="foregroundProvisioning" value="ref:foregroundProvisioning"/>
+    <Return name="project" to="project"/>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" name="LCM Create and Update"/>
+    </WorkflowRef>
+    <Transition to="Refresh Senate Identity"/>
+  </Step>
  
+  <Step action="call:refreshIdentity" icon="Task" name="Refresh Senate Identity">
+    <Arg name="identityName" value="ref:personaSPIN"/>
+    <Arg name="correlateEntitlements" value="false"/>
+    <Description>
+      Add arguments as necessary to enable refresh features.  Typically you 
+      only want this to correlate roles.  Don't ask for provisoinign since that
+      can result in provisoiing policies that need to be presented and it's
+      too late for that.  This is only to get role detection and exception
+      entitlements in the cube.
+    </Description>
+  	<Transition to="Build Persona Creation Plan for AD" /> 
+
+  </Step>  
+  
+    
+  <Step icon="Default" name="Build Persona Creation Plan for AD" posX="2" posY="135" resultVariable="adPlan">
+    <Description>Build Persona Creation Plan.</Description>
+    <Script>
+      <Source><![CDATA[
+        import java.util.ArrayList;
+        import java.util.Random;
+        import sailpoint.object.ProvisioningResult;
+        import sailpoint.object.Identity;
+        import sailpoint.object.ProvisioningPlan.AccountRequest;  
+        import sailpoint.object.ProvisioningPlan.AttributeRequest;
+        import org.apache.commons.logging.Log;
+		import org.apache.commons.logging.LogFactory;
+		import sailpoint.object.ProvisioningProject;
+		import sailpoint.object.ProvisioningResult;
+        import sailpoint.object.ProvisioningPlan;
+		
+		private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");
+    //logger.setLevel(ch)
+            
+    ProvisioningPlan adPlan = null;//workflow.get("plan");
+		
+		if (adPlan == null){
+			adPlan = new ProvisioningPlan();
+		}
+		
+		String identityName=workflow.get("identityName");
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD ::  the identityName is "+identityName);
+
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: the personaModel is "+personaModel);
+
+		if(null !=personaModel){
+			workflow.put("personaModel",personaModel);
+		}
+		//personaSPIN =workflow.get("personaSPIN");
+		//personaSPIN should be an input
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: the personaSPIN is  "+personaSPIN);
+		Identity idObject =  null;
+		
+		if(null != personaSPIN){
+			idObject = context.getObjectByName(Identity.class,personaSPIN);
+			logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: Set identity "+idObject.getName());
+		}
+		
+		ArrayList accntLst=new ArrayList();
+		
+		AccountRequest adAccountRequest =null;
+		AccountRequest bms32AccountRequest =null;
+		
+		if(STR_CREATE_IDENTITY.equalsIgnoreCase(eventName)) {
+			adAccountRequest = createBasicADAccount(context,idObject,workflow);
+			logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: the adAccountRequest is "+adAccountRequest.toXml());
+		}
+		if(adAccountRequest!=null){
+		  accntLst.add(adAccountRequest);
+		}
+		
+		adPlan.setAccountRequests(accntLst);
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: the AD PLAN is "+adPlan);
+
+ 		Provisioner provisioner = new Provisioner(context);
+		provisioner.setNoLocking(true);
+		logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for AD :: the provisioner is "+provisioner);
+
+		
+		return adPlan;
+		
+		]]></Source>
+    </Script>
+    
+    <Transition to="Provision To AD"/>
+  </Step>
+
+  <Step icon="Task" name="Provision To AD" posX="1184" posY="126">
+     <Arg name="plan" value="ref:adPlan"/>
+     <Arg name="flow" value="ref:flow"/>
+     <Arg name="identityName" value="ref:personaSPIN"/>
+     <Arg name="approvalScheme" value="none"/>
+     <Arg name="notificationScheme" value="none"/>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" name="LCM Provisioning"/>
+    </WorkflowRef>
+ <!--   <Transition to="Invoke Missing DOB WF" when="script:(null == personaModel.get(&quot;formDob&quot;) )"/> -->
+	
+    <Transition to="Build Persona Creation Plan for BMS32"/>
+   <!-- <Transition to="end"/> -->
+  </Step>
+
+  <Step icon="Default" name="Build Persona Creation Plan for BMS32" posX="2" posY="135" resultVariable="bms32Plan">
+    <Description>Build Persona Creation Plan.</Description>
+    <Script>
+      <Source><![CDATA[
+        import java.util.ArrayList;
+        import java.util.Random;
+        import sailpoint.object.ProvisioningResult;
+        import sailpoint.object.Identity;
+        import sailpoint.object.ProvisioningPlan.AccountRequest;  
+        import sailpoint.object.ProvisioningPlan.AttributeRequest;
+        import org.apache.commons.logging.Log;
+		import org.apache.commons.logging.LogFactory;
+		import sailpoint.object.ProvisioningProject;
+		import sailpoint.object.ProvisioningResult;
+        import sailpoint.object.ProvisioningPlan;
+		
+		private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");
+            
+		if (bms32Plan == null){
+			bms32Plan = new ProvisioningPlan();
+		}
+		
+		String identityName=workflow.get("identityName");
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 ::  the identityName is "+identityName);
+
+		logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: the personaModel is "+personaModel);
+
+		logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: the personaSPIN is  "+personaSPIN);
+		Identity idObject =  null;
+		
+		if(null != personaSPIN){
+			idObject = context.getObjectByName(Identity.class,personaSPIN);
+			logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: Set identity "+idObject.getName());
+		}
+		
+		ArrayList accntLst=new ArrayList();
+		
+		AccountRequest bms32AccountRequest =null;
+		
+		if(STR_CREATE_IDENTITY.equalsIgnoreCase(eventName)) {
+			bms32AccountRequest = generateCreatePlanForBMS32(context,personaSPIN);
+			logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: the bms32AccountRequest is "+bms32AccountRequest.toXml());
+		}
+		if(bms32AccountRequest!=null){
+		  accntLst.add(bms32AccountRequest);
+		}
+		
+		bms32Plan.setAccountRequests(accntLst);
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: the AD PLAN is "+bms32Plan);
+
+ 		Provisioner provisioner = new Provisioner(context);
+		provisioner.setNoLocking(true);
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Build Persona Creation Plan for BMS32 :: the provisioner is "+provisioner);
+
+		
+		return bms32Plan;
+		
+		]]></Source>
+    </Script>
+    <Transition to="Provision To BMS32"/>
+    
+    <!-- <Transition to="Refresh Identity After AD"/>-->
+  </Step>
+
+  <Step action="call:refreshIdentity" icon="Task" name="Refresh Identity After AD">
+    <Arg name="identityName" value="ref:personaSPIN"/>
+    <Arg name="refreshLinks" value="true"/>
+    <Transition to="Provision To BMS32"/>
+  </Step>
+  
+ <Step icon="Task" name="Provision To BMS32" posX="1184" posY="126">
+     <Arg name="plan" value="ref:bms32Plan"/>
+     <Arg name="flow" value="ref:flow"/>
+     <Arg name="identityName" value="ref:personaSPIN"/>
+     <Arg name="approvalScheme" value="none"/>
+     <Arg name="notificationScheme" value="none"/>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" name="LCM Provisioning"/>
+    </WorkflowRef>
+    <Transition to="Set Provision Status"/>
+    <Transition to="end"/>
+  </Step>
+ 
+  
+  <Step icon="Default" name="Set Provision Status">
+    <Description>
+           Audit the Provisioning Plan 
+     </Description>
+    <Script>
+      <Source><![CDATA[
+            setProvisionStatus(context, workflow);
+        ]]></Source>
+    </Script>
+    <Transition to="Post Provison"/>
+  </Step>
+
+  <Step icon="Default" name="Post Provison">
+      <Description>
+        Post provisioning processing Write back to AD Sync
+        Write back to BMS 32
+     </Description>
+    <Script>
+      <Source><![CDATA[
+        import sailpoint.object.Identity;
+        import org.apache.log4j.Logger;
+        import sailpoint.object.WorkflowCase;
+        import sailpoint.tools.Util;
+		
+		String writeBackToAd = null;
+		String writeBackToPersons = null;
+		private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");
+        logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Post Provison :: Start ");
+		logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Post Provison :: End ");
+       
+        ]]></Source>
+    </Script>
+   <!--<Transition to="Invoke Missing DOB WF" when="script:(Util.isNullOrEmpty(personaModel.get(&quot;formDob&quot;)) )"/>-->
+   <Transition to="Send Emails"/>
+   <Transition to="end"/>
+  </Step>
+  
+     <Step name="Send Emails" >
+		<Arg name="emailArgList" value="ref:emailArgList"/>
+		<Arg name="personaModel" value="ref:personaModel"/>
+        <Script>
+        <Source><![CDATA[
+                     
+       import java.util.HashMap;
+       import java.util.Iterator;
+       import java.util.Map;
+       import java.util.ArrayList;
+       import org.apache.log4j.Logger;
+       import sailpoint.api.SailPointContext;
+       import sailpoint.api.SailPointFactory;
+       import sailpoint.object.EmailOptions;
+       import sailpoint.object.EmailTemplate;
+       import sailpoint.object.Identity;
+       import sailpoint.api.Provisioner;
+       import sailpoint.object.ProvisioningPlan;
+       import sailpoint.object.ProvisioningPlan.Operation;
+       import sailpoint.tools.GeneralException;
+       import sailpoint.object.ProvisioningPlan.AccountRequest;
+       import sailpoint.object.ProvisioningPlan.AccountRequest.Operation;
+       import sailpoint.object.ProvisioningProject;
+       import org.apache.commons.logging.Log;
+       import org.apache.commons.logging.LogFactory;  
+       import sailpoint.api.Provisioner;   
+              
+       private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");                   
+                 
+	   logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Send Emails :: emailArgList "+emailArgList);
+	   if(null == emailArgList ){
+		   //this should not be the case
+		   emailArgList = new ArrayList();
+		   String toEmailStr = getWorkgroupOrHREmails(personaSPIN);
+		   logger.debug("Workflow-SEN-ScheduledLeanJoiner :: toEmailStr : " + toEmailStr);
+		   HashMap hMap = new HashMap();
+		   hMap.put("to", toEmailStr );
+		   hMap.put("emailTemplate", "EmailTemplate-SEN-BadgeIssuanceSuccess");
+		   HashMap genericArgs = new HashMap();
+		   if(null != personaModel.get("formFirstName")){
+				genericArgs.put("displayName", personaModel.get("formFirstName")+" "+personaModel.get("formLastName"));   
+		   }
+		   hMap.put("emailArgs",genericArgs);
+
+		   emailArgList.add(hMap);                                   
+                               
+	   }	   
+
+	   if(null != emailArgList && emailArgList.size() >0){
+		   logger.debug("Workflow-SEN-ScheduledLeanJoiner :: Send Emails :: emailArgList "+emailArgList);
+		   for(Map eMap : emailArgList){
+			   EmailTemplate template = context.getObjectByName(EmailTemplate.class, eMap.get("emailTemplate"));
+			   logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Send Emails ::  Mail template "+template.getName());
+			   Map mArgs = new HashMap();
+			   mArgs.put("emailArgs",eMap.get("emailArgs"));
+			   EmailOptions options = new EmailOptions(eMap.get("to"), mArgs);
+			   context.sendEmailNotification(template, options);
+			   logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Send Emails :: Mail Sent ");
+		   }	   
+	   }
+             
+              ]]></Source>
+             </Script>
+			<Transition to="Post TDI To PeopleSoft" />
+			<Transition to="end" />
+       </Step>
+
+<!--
+  <Step name="Send Emails">
+    <Arg name="emailArgList" value="ref:emailArgList"/>
+    <Description>
+      Call the standard subprocess that will handle the built-in
+      owner, manager and security officer approval schemes.
+    </Description>
+    <WorkflowRef>
+      <Reference class="sailpoint.object.Workflow" name="SP Dynamic Send Emails Sub"/>
+    </WorkflowRef>
+    <Transition to="Post TDI To PeopleSoft" />
+    <Transition to="end" />
+  </Step>
+  -->
+	<Step name="Post TDI To PeopleSoft">
+        <Arg name="inIdentity" value="ref:inIdentity"/>
+	
+        <Description>Post back to the PeopleSoft REST end point with the TDI details.
+        </Description>
+        <Script>
+            <Source>
+            <![CDATA[
+            import java.util.HashMap;
+            import java.util.Map;    
+            import sailpoint.api.SailPointContext;
+            import sailpoint.object.Attributes;
+            import sailpoint.object.Rule;      
+            import sailpoint.tools.GeneralException;
+			import org.apache.commons.logging.Log;
+			import org.apache.commons.logging.LogFactory;  
+			import sailpoint.api.Provisioner;   
+              
+			private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");                  
+			
+			logger.info("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: for Target User personaSPIN "+personaSPIN);
+     
+			
+            Rule postToPeopleSoftRule = null;
+			Identity inIdentity = null;
+			HashMap ruleArgs = new HashMap();
+			//String targetIdentityName = null;
+			//targetIdentityName = ((String)personaModel.get("spin")).trim();
+			if(null != personaSPIN ){
+				logger.info("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: for Target User  "+personaSPIN);
+				inIdentity = context.getObjectByName(Identity.class,personaSPIN);
+				ruleArgs.put("inIdentity", inIdentity);
+				ruleArgs.put("inIdentityName", personaSPIN);
+				logger.info("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: for Target User  inIdentity "+personaSPIN);
+				if(null != inIdentity){
+					logger.info("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: ruleArgs "+inIdentity.getName());
+					ruleArgs.put("inIdentity", inIdentity);
+					//ruleArgs.put("inIdentityName", inIdentity.getName());
+					
+					postToPeopleSoftRule = context.getObjectByName(Rule.class, "Rule-SEN-WritebackToPeopleSoftHCM");
+					logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: obtained rule obj  "+postToPeopleSoftRule.getName());
+					String returnPostVal = context.runRule(postToPeopleSoftRule, ruleArgs);
+					logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Post TDI To PeopleSoft :: obtained result returnPostVal "+returnPostVal);
+					
+					context.decache(postToPeopleSoftRule);
+					workflow.put("WriteToPeopleSoft",returnPostVal);
+				}
+			}
+			
+        
+            ]]>
+            </Source>
+        </Script>
+       <Transition to="Spin Workitem For LAN Admins"/>
+       <Transition to="end"/>
+    </Step>  
+   	
+  <Step name="Spin Workitem For LAN Admins"  >
+    <Script>
+    <Source><![CDATA[
+                     
+       import org.apache.commons.logging.Log;
+       import org.apache.commons.logging.LogFactory;  
+              
+       private static Log logger = LogFactory.getLog("senate.workflow.CreatePersona");                  
+       boolean spinWorkItem = createManageAccessWorkItem(personaSPIN,launcher,eventName);          
+       logger.warn("Workflow-SEN-ScheduledLeanJoiner :: Spin Workitem For LAN Admins :: spinWorkItem " +spinWorkItem);
+               
+     ]]></Source>
+     </Script>
+     
+     <Transition to="end" />
+  </Step>  
  
   <Step icon="Stop" name="end"/>
 </Workflow>

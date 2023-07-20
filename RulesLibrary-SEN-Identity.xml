@@ -57,7 +57,7 @@ import sailpoint.connector.Connector;
 import java.text.SimpleDateFormat;
 import java.text.DateFormat;
 
-private static Log logger = LogFactory.getLog("org.rulelibraries");
+private static Log logger = LogFactory.getLog("senate.rulelibraries");
 
 // Identity Related Attributes
 public static String STR_MANAGE_IDEN_IMMEDIATE_TYPE ="Immediate";
@@ -147,11 +147,11 @@ public static String STR_BADGE_HISTORY_APP_NAME = "SEN-BadgeHistory";
  public static String STR_WKFL_NONE = "none"; 
  public static String STR_WKFL_FALSE = "false"; 
  public static String STR_WKFL_REQUEST_NAME = "Workflow Request"; // Worklflow Request name
- public static String STR_DEFAULT_DOMAINCONTROLLER = "%%AD_FOREST%%"; //"org.usorg.lab";
+ public static String STR_DEFAULT_DOMAINCONTROLLER = "%%AD_FOREST%%"; //"senate.ussenate.lab";
 
 //GLOBAL EMAIL ADDRESS
- public static String HREmail = "SAAIAM-IIQDev@saa.org.com"; //"hr@saa.org.com";   //hr@saa.org.com;
- public static String IAMEmail = "SAAIAM-IIQDev@saa.org.com";  //IIQDev@saa.org.com;
+ public static String HREmail = "SAAIAM-IIQDev@saa.senate.gov"; //"hr@saa.senate.gov";   //hr@saa.senate.gov;
+ public static String IAMEmail = "SAAIAM-IIQDev@saa.senate.gov";  //IIQDev@saa.senate.gov;
  
  public static SimpleDateFormat spFormat = new SimpleDateFormat("MM/dd/yyyy");
  public static String spInputDateFormatStr = "EEE MMM dd HH:mm:ss zzz yyyy";
@@ -161,7 +161,7 @@ public static String STR_BADGE_HISTORY_APP_NAME = "SEN-BadgeHistory";
  public static SimpleDateFormat dobDateFormat = new SimpleDateFormat("MM/dd/yyyy hh:mm:ss aaa z");
 
 
-   private Log ilogger = LogFactory.getLog("org.rulelibraries");
+   private Log ilogger = LogFactory.getLog("senate.rulelibraries");
  
 	public static String convertSpDateToStandardFormat(String inDate){
 		String outDateString="";
@@ -253,6 +253,25 @@ public static String STR_BADGE_HISTORY_APP_NAME = "SEN-BadgeHistory";
           
       return acctReq;
       
+	}
+
+		public String generateADSAMAccountName(Identity identity) {
+		// Get the first initial from the first name
+
+		String firstName = identity.getAttribute("firstname");
+		String lastName = identity.getAttribute("lastname");
+		char firstInitial = firstName.charAt(0);
+
+		// Get the last initial from the last name
+		char lastInitial = lastName.charAt(0);
+
+		String spin = identity.getAttribute("spin");
+
+		// Combine the strings
+		String result = spin + firstInitial + lastInitial;
+
+		// Return the combined string
+		return result;
 	}
 
 	public static List disableAllAccounts(SailPointContext context,String identityName){
@@ -412,11 +431,11 @@ public static String STR_BADGE_HISTORY_APP_NAME = "SEN-BadgeHistory";
 		 
 		 acctReq.setNativeIdentity(adAppLink.getNativeIdentity());
 		 
-		 //String strADEmail="@org.com";
+		 //String strADEmail="@senate.gov";
 		  
 		 // strADEmail=getFV_Active_Directory_mail_Rule(context,ident,"MODIFY");
 		 // String mailNickName="firstname.lastname";
-		 String newSAMAccountName=(String)generateADSAMAccountName(context,identity,"Update");
+		 String newSAMAccountName=(String)generateADSAMAccountName(identity);
 		 //  getFV_Active_Directory_mailNickname_Rule(context,ident,"MODIFY");
 		 String firstName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_FIRSTNAME);
 		 String lastName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_LASTNAME);
@@ -551,7 +570,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 		smasServerNamePrifix = getADAttributeFromDepartment(dNum,"SMASServerNamePrefix");
 		//smasServerNamePrifix = getAttributeValFromDepartment(dNum,"SMASServerNamePrefix");
       	if(null != smasServerNamePrifix){
-      		sAMAccountName = generateADSAMAccountName(context,targetIdentity,"Create"); //spinForAD+smasServerNamePrifix;
+      		sAMAccountName = generateADSAMAccountName(targetIdentity); //spinForAD+smasServerNamePrifix;
 	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The sAMAccountName  is "+sAMAccountName);
 			upnString = getADUserPrinciplaName(context,targetIdentity,"Create");
 	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createBasicADAccount :: The upnString  is "+upnString);
@@ -743,7 +762,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 		//spinForAD is nothing but identity.name
       	String identitySpin = personaModel.get("spin");
       	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: identitySpin "+identitySpin);
-      	//SEND 0916 org Team confirmed that no 3 Char Suffix
+      	//SEND 0916 Senate Team confirmed that no 3 Char Suffix
       	String spinForAD = identitySpin; //identitySpin.substring(0,identitySpin.length()-3).trim();
       	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The spinForAD  is "+spinForAD);
 	    String sAMAccountName = null;
@@ -755,7 +774,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 		//smasServerNamePrifix = getAttributeValFromDepartment(dNum,"SMASServerNamePrefix");
 		if(null != smasServerNamePrifix){
       		//sAMAccountName = spinForAD+smasServerNamePrifix;
-			sAMAccountName = generateADSAMAccountName(context,targetIdentity,"Create");
+			sAMAccountName = generateADSAMAccountName(targetIdentity);
 	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The sAMAccountName  is "+sAMAccountName);
 			upnString = getADUserPrinciplaName(context,targetIdentity,"Create");
 	      	if(logger.isDebugEnabled()) logger.debug("RulesLibrary-SEN-Identity :: createReactivateADAccount :: The UPN  is "+upnString);
@@ -916,7 +935,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, sAMAccountName));
 			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,sAMAccountName));
 			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,sAMAccountName));
-			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,sAMAccountName+"@org.usorg.dev"));
+			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,sAMAccountName+"@senate.ussenate.dev"));
 			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
 			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
 			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
@@ -927,7 +946,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 	      	adAcctReq.add(new AttributeRequest("mailNickname", ProvisioningPlan.Operation.Set, spinForAD));
 			adAcctReq.add(new AttributeRequest("sAMAccountName", ProvisioningPlan.Operation.Set,spinForAD));
 			adAcctReq.add(new AttributeRequest("uid", ProvisioningPlan.Operation.Set,spinForAD));
-			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,spinForAD+"@org.usorg.dev"));
+			//adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,spinForAD+"@senate.ussenate.dev"));
 			adAcctReq.add(new AttributeRequest("userPrincipalName", ProvisioningPlan.Operation.Set,upnString));
 			adAcctReq.add(new AttributeRequest("division", ProvisioningPlan.Operation.Set,dNum));
 			adAcctReq.add(new AttributeRequest("employeeID", ProvisioningPlan.Operation.Set,spinForAD));
@@ -1170,7 +1189,7 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 
       	if(null != pStatus){
       		//personaSPIN = nextAvailableSpin+pMap.get(pStatus);
-      		//SEND 0916 org Team decided to opt out in using the 3 Char suffix on the Identity.name
+      		//SEND 0916 Senate Team decided to opt out in using the 3 Char suffix on the Identity.name
       		//And only S01 and S02 suffix will be used to represent Secondary Personas with Primary Persona being SPIN 
       		personaSPIN = nextAvailableSpin;
       	}
@@ -2132,11 +2151,11 @@ public static List deleteAllAccounts(SailPointContext context,String identityNam
 		 
 		 acctReq.setNativeIdentity(adAppLink.getNativeIdentity());
 		 
-		 //String strADEmail="@org.com";
+		 //String strADEmail="@senate.gov";
 		  
 		 // strADEmail=getFV_Active_Directory_mail_Rule(context,ident,"MODIFY");
 		 // String mailNickName="firstname.lastname";
-		 String newSAMAccountName=(String)generateADSAMAccountName(context,identity,"Update");
+		 String newSAMAccountName=(String)generateADSAMAccountName(identity);
 		 //  getFV_Active_Directory_mailNickname_Rule(context,ident,"MODIFY");
 		 String firstName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_FIRSTNAME);
 		 String lastName=getAttributeValue(context,identity, STR_IDENTITY_TYPE,"",STR_IDENTITY_LASTNAME);
